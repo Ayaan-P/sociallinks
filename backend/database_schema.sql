@@ -171,6 +171,19 @@ CREATE INDEX idx_relationship_tags_relationship_id ON relationship_tags(relation
 CREATE INDEX idx_reminders_relationship_id ON reminders(relationship_id);
 CREATE INDEX idx_reminders_reminder_date ON reminders(reminder_date);
 
+-- Category History Table (Track when categories are added/changed for a relationship)
+CREATE TABLE category_history (
+    id SERIAL PRIMARY KEY,
+    relationship_id INTEGER REFERENCES relationships(id) ON DELETE CASCADE,
+    category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
+    change_type VARCHAR(50) NOT NULL, -- e.g., 'added', 'removed' (though current logic only adds/replaces)
+    interaction_id INTEGER REFERENCES interactions(id) ON DELETE SET NULL, -- Optional: Link to interaction that triggered suggestion
+    user_confirmed BOOLEAN DEFAULT TRUE, -- Assumes changes via PUT are user-confirmed
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_category_history_relationship_id ON category_history(relationship_id);
+
+
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_modified_column()
 RETURNS TRIGGER AS $$

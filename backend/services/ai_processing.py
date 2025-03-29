@@ -12,78 +12,71 @@ if not ANTHROPIC_API_KEY:
 
 anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
-def process_interaction_log_ai(interaction_log, current_level):
+def process_interaction_log_ai(interaction_log, current_level, current_categories):
     """
     Analyzes the interaction log using Anthropic Claude in a single call.
-    Provides comprehensive analysis including sentiment, XP calculation, 
+    Provides comprehensive analysis including sentiment, XP calculation,
     relationship evolution suggestions, and interaction suggestions.
-    
     Args:
-        interaction_log (str): The user's journal entry text
-        current_level (int): The current relationship level (1-10)
-        
+        interaction_log (str): The user's journal entry text.
+        current_level (int): The current relationship level (1-10).
+        current_categories (list[str]): List of current categories for the relationship.
+
     Returns:
         tuple: Contains sentiment analysis, XP score, reasoning, patterns detected,
                evolution suggestion, and interaction suggestion
     """
     try:
+        # Corrected model name
         response = anthropic_client.messages.create(
             model="claude-3-7-sonnet-20250219",
             max_tokens=600,
-            system="""You are the AI assistant for Dytto, a relationship journaling app that helps users track and grow their real-world relationships. The app uses a gamified approach with relationship levels (1-10), XP points, and relationship categories that can branch and evolve.
+            system="""You are the AI assistant for Dytto, a relationship journaling app. Your goal is to analyze user journal entries about interactions and provide insights based on the app's leveling and category evolution system.
 
 CONTEXT:
-- Users log interactions with people they care about
-- Each relationship has a level (1-10) that grows with XP
-- Relationships can have multiple categories (Friend, Business, Romantic, etc.)
-- Categories can evolve and branch based on interaction patterns
-- The app aims to help users be more intentional about relationships
+- **Levels & XP:** Relationships level up from 1 to 10 based on XP.
+- **XP Assignment:** Award XP based on interaction quality:
+    * +1 XP: Surface-level logs, small talk, basic check-ins.
+    * +2 XP: Demonstrates warmth, some depth, sharing personal updates, active listening.
+    * +3 XP: Shows emotional vulnerability, discusses deep topics, provides/receives significant support, marks memorable moments or overcoming challenges together.
+    * *Nuance:* While the core quality dictates XP, consider the current level slightly. Achieving +3 XP might require more significant interaction at higher levels (e.g., Level 8+) compared to lower levels (e.g., Level 2), but the primary driver is the interaction's substance.
+- **Categories:** Relationships have 1-3 active categories.
+    * **Base Categories:** Business, Acquaintance, Friend, Romantic, Mentor/Student, Intellectual Peer, Social Buddy, Family (Assume Family exists too).
+    * **Evolution:** Categories evolve based on interaction patterns. AI suggests adding a *new* category if criteria *and level requirements* are met.
+    * **Evolution Paths & Triggers (with Level Requirements):**
+        * Business -> + Friend: 3+ personal logs, warm tone, shared non-work interests/activities, **Current Level > 4**.
+        * Friend -> + Romantic: Flirty/intimate tone, deep emotional vulnerability, shared exclusive experiences, explicit romantic interest mentioned, **Current Level >= 6**.
+        * Mentor -> + Friend: Increased mutuality, shift to informal/personal conversation topics beyond mentorship. (No specific level requirement mentioned, apply general judgment).
+        * Acquaintance -> Friend: 3+ positive logs, consistent interaction over time, shared plans or interests, **Current Level > 2**.
+        * Intellectual -> + Creative: 2+ logs involving collaboration, brainstorming, building on each other's ideas. (No specific level requirement mentioned, apply general judgment).
+        * Friend -> + Emotional Support: 3+ logs involving significant vulnerability (by either party), strong empathy/care expressed, **Current Level >= 5**.
+        * Romantic -> + Friend (Decay): Tone becomes consistently detached/distanced, 3+ logs with declining sentiment, focus shifts away from romance. (Suggest adding 'Friend' if not present, or just note the decay if 'Friend' is already there). (No specific level requirement mentioned).
+- **AI Role:** Analyze the log, determine sentiment, calculate XP, suggest category evolution *only if applicable triggers and level requirements are met*, and provide an interaction suggestion.
 
-YOUR ROLE:
-Analyze each journal entry to provide insights and growth metrics. For each entry:
+YOUR TASK:
+Given the journal entry, the relationship's current level, and its current categories, return a JSON object with the following keys:
+- `sentiment_analysis`: (string) Detailed description of emotions and tone (e.g., "Positive and warm, discussed shared hobbies enthusiastically.")
+- `xp_score`: (integer) 1, 2, or 3 based on the XP Assignment criteria.
+- `reasoning`: (string) Brief justification for the `xp_score` based on the interaction quality described in the log.
+- `patterns`: (string or null) Any recurring themes or patterns detected *in this specific log* compared to typical interactions for this relationship type/level (e.g., "Shift towards discussing future plans more often."). Null if none detected.
+- `evolution_suggestion`: (string or null) If the log strongly suggests adding a new category based on the Evolution Paths, suggest the *new category to add* (e.g., "Friend"). Only suggest *one* new category per log. Check against `current_categories` - don't suggest adding a category that already exists. Return null if no evolution is strongly suggested by this log.
+- `interaction_suggestion`: (string) A specific, actionable suggestion for a next interaction to deepen the bond, relevant to the log content and current level/categories.
 
-1. SENTIMENT ANALYSIS:
-   - Identify the emotional tone (positive, negative, neutral, mixed)
-   - Provide a nuanced description of emotions present
-   - Detect recurring emotional patterns if applicable
-
-2. XP CALCULATION (1-3 points):
-   - Level 1-3 relationships: Award points generously to encourage growth
-     * 1 XP: Basic, surface-level interaction (quick chat, brief message)
-     * 2 XP: Meaningful conversation with some depth
-     * 3 XP: Vulnerable sharing, significant support, or memorable experience
-   
-   - Level 4-7 relationships: Require more depth for the same XP
-     * 1 XP: Regular check-in or casual conversation
-     * 2 XP: Personal topics, active listening, or quality time
-     * 3 XP: Deep conversation, significant emotional support, or milestone event
-   
-   - Level 8-10 relationships: Require substantial effort and depth
-     * 1 XP: Routine interaction that maintains the relationship
-     * 2 XP: Meaningful support, quality time, or addressing challenges
-     * 3 XP: Exceptional connection, relationship growth, or transformative experience
-
-3. RELATIONSHIP EVOLUTION:
-   - Suggest potential new relationship categories when appropriate
-   - Identify when a relationship might be ready to branch into new dimensions
-   - Example: A "Friend" relationship might evolve to add "Business" if work topics become frequent
-
-4. INTERACTION SUGGESTIONS:
-   - Provide a specific suggestion for deepening the relationship based on the entry
-   - At milestone levels (2, 4, 6, etc.), suggest "quests" like "Ask about their childhood" or "Share a personal belief"
-
-RESPONSE FORMAT:
-Return a JSON object with these keys:
-- sentiment_analysis: Detailed description of emotions and tone
-- xp_score: Number 1-3 based on criteria above
-- reasoning: Brief justification for the XP score
-- patterns: Any recurring themes or patterns detected (or null if none)
-- evolution_suggestion: Suggestion for relationship category evolution (or null if none)
-- interaction_suggestion: Specific suggestion for next interaction""",
+EXAMPLE JSON OUTPUT:
+```json
+{
+  "sentiment_analysis": "Positive and supportive. User expressed gratitude for friend's help during a stressful week.",
+  "xp_score": 3,
+  "reasoning": "Log describes significant emotional support provided during a challenging time.",
+  "patterns": null,
+  "evolution_suggestion": "Emotional Support",
+  "interaction_suggestion": "Check in next week and see how they're doing after the stressful period."
+}
+```""",
             messages=[
                 {
                     "role": "user",
-                    "content": f"Analyze this journal entry for sentiment and relationship growth, considering the current relationship level is {current_level}. Return a JSON object with all the required fields. Journal Entry: '{interaction_log}'"
+                    "content": f"Analyze this journal entry. Current Level: {current_level}. Current Categories: {current_categories}. Return JSON. Journal Entry: '{interaction_log}'"
                 }
             ]
         )
@@ -111,40 +104,44 @@ Return a JSON object with these keys:
         print(f"Error processing interaction log with Anthropic: {e}")
         return f"AI processing failed: {e}", 1, f"Error during AI processing: {e}", None, None, None
 
-def analyze_sentiment(interaction_log, current_level):
+# --- Helper functions now call the main processor with categories ---
+
+def analyze_sentiment(interaction_log, current_level, current_categories):
     """
-    Analyzes sentiment using the combined AI function, passing current level.
+    Analyzes sentiment using the combined AI function.
     """
-    sentiment_analysis, _, _, _, _, _ = process_interaction_log_ai(interaction_log, current_level)
+    sentiment_analysis, _, _, _, _, _ = process_interaction_log_ai(interaction_log, current_level, current_categories)
     return sentiment_analysis
 
-def calculate_xp(interaction_log, current_level):
+def calculate_xp(interaction_log, current_level, current_categories):
     """
-    Calculates XP using the combined AI function, passing current level.
+    Calculates XP using the combined AI function.
     """
-    _, xp_score, reasoning, _, _, _ = process_interaction_log_ai(interaction_log, current_level)
+    _, xp_score, reasoning, _, _, _ = process_interaction_log_ai(interaction_log, current_level, current_categories)
     return xp_score, reasoning
 
-def detect_patterns(interaction_log, current_level):
+def detect_patterns(interaction_log, current_level, current_categories):
     """
     Detects recurring patterns in interactions.
     """
-    _, _, _, patterns, _, _ = process_interaction_log_ai(interaction_log, current_level)
+    _, _, _, patterns, _, _ = process_interaction_log_ai(interaction_log, current_level, current_categories)
     return patterns
 
-def suggest_evolution(interaction_log, current_level):
+def suggest_evolution(interaction_log, current_level, current_categories):
     """
     Suggests potential relationship category evolution.
     """
-    _, _, _, _, evolution_suggestion, _ = process_interaction_log_ai(interaction_log, current_level)
+    _, _, _, _, evolution_suggestion, _ = process_interaction_log_ai(interaction_log, current_level, current_categories)
     return evolution_suggestion
 
-def suggest_interaction(interaction_log, current_level):
+def suggest_interaction(interaction_log, current_level, current_categories):
     """
     Provides a suggestion for the next interaction.
     """
-    _, _, _, _, _, interaction_suggestion = process_interaction_log_ai(interaction_log, current_level)
+    _, _, _, _, _, interaction_suggestion = process_interaction_log_ai(interaction_log, current_level, current_categories)
     return interaction_suggestion
+
+# --- Placeholder DB functions (should be replaced or removed if handled in app.py) ---
 
 def get_relationship_level(relationship_id):
     """

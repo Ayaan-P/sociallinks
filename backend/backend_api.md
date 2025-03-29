@@ -13,23 +13,23 @@ The base URL for all API endpoints is the root of the backend application (`/`).
     *   Request Body (JSON):
         ```json
         {
-            "name": "string",              // Required
-            "relationship_type": "string", // Required
-            "reminder_interval": "string", // Required
-            "category": "string",          // Required (e.g., "Friend", "Business")
-            "photo_url": "string",         // Optional
-            "tags": ["string", "string"]   // Optional (e.g., ["High Priority", "Close Friend"])
+            "name": "string",                   // Required
+            "relationship_type": "string",      // Required
+            "reminder_interval": "string",      // Required
+            "initial_category_name": "string",  // Required (e.g., "Friend", "Business") - Name of the first category
+            "photo_url": "string",              // Optional
+            "tags": ["string", "string"]        // Optional (e.g., ["High Priority", "Close Friend"]) - Note: Tags might move to a junction table later
         }
         ```
     *   Response (JSON):
-        *   Success (201 Created): Returns the newly created relationship object.
+        *   Success (201 Created): Returns the newly created relationship object, including a `categories` list with the initial category name.
         *   Error (400 Bad Request): Missing required fields.
         *   Error (500 Internal Server Error): Supabase error or other server error.
 
 *   **GET /relationships**
     *   Description: Retrieves all relationships.
     *   Response (JSON):
-        *   Success (200 OK): Returns a list of relationship objects.
+        *   Success (200 OK): Returns a list of relationship objects. Each object includes a `categories` field (array of strings).
         *   Error (500 Internal Server Error): Supabase error or other server error.
 
 *   **GET /relationships/\<relationship_id>**
@@ -37,7 +37,7 @@ The base URL for all API endpoints is the root of the backend application (`/`).
     *   Path Parameters:
         *   `relationship_id` (integer): The ID of the relationship to retrieve.
     *   Response (JSON):
-        *   Success (200 OK): Returns the requested relationship object.
+        *   Success (200 OK): Returns the requested relationship object, including a `categories` field (array of strings).
         *   Error (404 Not Found): Relationship not found.
         *   Error (500 Internal Server Error): Supabase error or other server error.
 
@@ -48,13 +48,14 @@ The base URL for all API endpoints is the root of the backend application (`/`).
     *   Request Body (JSON):
         ```json
         {
-            // Any fields from the relationship object can be updated
+            // Any standard relationship fields can be updated
             "name": "string",
             "relationship_type": "string",
             "reminder_interval": "string",
-            "category": "string",
             "photo_url": "string",
-            "tags": ["string", "string"]
+            "tags": ["string", "string"], // Note: Tags might move to a junction table later
+            // To update categories, include the 'categories' field:
+            "categories": ["Friend", "Business"] // Optional: Replaces ALL existing categories with this list (max 3)
         }
         ```
     *   Response (JSON):
@@ -93,15 +94,16 @@ The base URL for all API endpoints is the root of the backend application (`/`).
                 "tone_tag": "string",
                 "sentiment_analysis": "string",  // AI-generated sentiment analysis
                 "xp_gain": integer,              // XP points awarded (1-3)
-                "suggested_tone": "string",      // AI-suggested tone tag
-                "evolution_suggestion": "string", // Potential relationship category evolution
+                "suggested_tone": "string",      // AI-suggested tone tag (often same as sentiment_analysis)
+                "evolution_suggestion": "string" or null, // Name of *new* category suggested by AI (e.g., "Friend"). Backend attempts to add if valid & < 3 categories exist.
                 "ai_reasoning": "string",        // Explanation for XP score
-                "patterns": "string",            // Detected recurring patterns
-                "interaction_suggestion": "string" // Suggestion for next interaction
+                "patterns": "string" or null,    // Detected recurring patterns in this log
+                "interaction_suggestion": "string", // Suggestion for next interaction
+                "processing_error": "string"     // Optional: Included if AI/Leveling/Evolution update failed internally
             }
             ```
         *   Error (400 Bad Request): Missing required fields.
-        *   Error (500 Internal Server Error): Supabase error or other server error.
+        *   Error (500 Internal Server Error): Supabase error, AI processing error, or other server error.
 
 *   **GET /interactions**
     *   Description: Retrieves all interaction logs.
@@ -166,8 +168,8 @@ The base URL for all API endpoints is the root of the backend application (`/`).
                     "photo_url": "string",
                     "level": integer,
                     "days_since_interaction": integer or "Never",
-                    "category": "string",
-                    "tags": ["string", "string"]
+                    "categories": ["string", "string"], // List of current categories
+                    "tags": ["string", "string"]        // Note: Tags might move to a junction table later
                 },
                 // More dashboard items...
             ]
@@ -187,15 +189,12 @@ The base URL for all API endpoints is the root of the backend application (`/`).
             "name": "string",
             "level": integer,
             "reminder_settings": "string",
-            "xp_bar": integer, 
-            "last_interaction": { // Interaction object or null
-                "id": integer,
-                "relationship_id": integer,
-                "created_at": "timestamp",
-                "interaction_log": "string",
-                "tone_tag": "string" 
-            },
-            "relationship_tags": ["string", "string"] 
+            "xp_bar": integer,                 // XP progress within current level (0-100 percentage)
+            "xp_earned_in_level": integer,     // Raw XP earned within the current level
+            "xp_needed_for_level": integer,    // Total XP needed to complete the current level
+            "total_xp": integer,               // Total accumulated XP
+            "last_interaction": { /* Interaction object or null */ },
+            "categories": ["string", "string"] // List of current categories
         }
         ```
         *   Success (200 OK): Returns the profile overview data.
