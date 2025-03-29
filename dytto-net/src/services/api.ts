@@ -5,7 +5,7 @@ import { Interaction, CreateInteractionPayload } from '../types/Interaction';
 import { Quest } from '../types/Quest';
 
 // Define the base URL for the API
-export const API_BASE_URL = 'https://thick-hornets-eat.loca.lt'; // Update this with your actual backend URL
+export const API_BASE_URL = 'https://seven-heads-argue.loca.lt'; // Update this with your actual backend URL
 
 // Create an axios instance with the base URL
 const api = axios.create({

@@ -66,6 +66,7 @@ const ProfileXpBar: React.FC<{
 
   return (
     <View style={styles.xpBarContainer}>
+     
       <View style={styles.xpBarBackground}>
         <Animated.View
           style={[
@@ -79,7 +80,7 @@ const ProfileXpBar: React.FC<{
         />
       </View>
       <Text style={styles.xpText}>
-        {level >= 10 ? `Level ${level} (Max)` : `${xpInLevel} / ${xpForLevel} XP to Level ${level + 1}`}
+        {level >= 10 ? `Level ${level} (Max)` : `${xpForLevel-xpInLevel} XP to Level ${level + 1}`}
       </Text>
       <Text style={styles.totalXpText}>Total XP: {currentXp}</Text>
     </View>
@@ -647,38 +648,40 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
     <View style={styles.container}>
       <StatusBar backgroundColor={theme.colors.surface} barStyle={theme.isDark ? 'light-content' : 'dark-content'} />
 
-      {/* Header Section - Changed back to regular View, removed animated height */}
+      {/* Header Section with inline XP Bar */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          {profileData.photo_url ? (
-            <Image source={{ uri: profileData.photo_url }} style={styles.profilePhoto} />
-          ) : (
-            <View style={[styles.profilePhoto, styles.profileInitialContainer]}>
-              <Text style={styles.profileInitial}>{profileData.name.charAt(0).toUpperCase()}</Text>
+          <View style={{flexDirection: 'row', alignItems: 'center', gap: 20}}>
+            {profileData?.photo_url ? (
+              <Image source={{ uri: profileData.photo_url }} style={styles.profilePhoto} />
+            ) : (
+              <View style={[styles.profilePhoto, styles.profileInitialContainer]}>
+                <Text style={styles.profileInitial}>{profileData?.name?.charAt(0)?.toUpperCase()}</Text>
+              </View>
+            )}
+            
+            {/* XP Bar moved next to profile image */}
+            <View style={{flex: 1}}>
+            <Text style={styles.profileName}>{profileData?.name}</Text>
+              <ProfileXpBar
+                currentXp={profileData?.total_xp || 0}
+                xpInLevel={profileData?.xp_earned_in_level || 0}
+                xpForLevel={profileData?.xp_needed_for_level || 0}
+                level={profileData?.level || 0}
+                theme={theme}
+              />
             </View>
-          )}
-          <Text style={styles.profileName}>{profileData.name}</Text>
-          <Text style={styles.levelText}>Level {profileData.level}</Text>
+          </View>
+
+        
 
           {/* Categories */}
           <View style={styles.categoriesContainer}>
-            {profileData.categories.map((category, index) => (
+            {profileData?.categories?.map((category, index) => (
               <CategoryTag key={index} label={category} theme={theme} />
             ))}
           </View>
         </View>
-        {/* XP Bar removed from here */}
-      </View>
-
-      {/* XP Bar - Moved outside the animated header AND ScrollView */}
-      <View style={styles.xpBarWrapper}>
-        <ProfileXpBar
-          currentXp={profileData.total_xp}
-          xpInLevel={profileData.xp_earned_in_level}
-          xpForLevel={profileData.xp_needed_for_level}
-          level={profileData.level}
-          theme={theme}
-        />
       </View>
 
       {/* Tab Navigation - Outside ScrollView */}
@@ -740,20 +743,20 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
   },
   header: {
     backgroundColor: theme.colors.surface,
-    padding: theme.spacing.lg, // Use lg padding for all sides, including bottom
+    padding: theme.spacing.md, // Use lg padding for all sides, including bottom
     // Removed paddingBottom override
-    alignItems: 'center',
+    alignItems: "flex-start",
     // No border/margin needed here now
   },
   headerContent: {
-     alignItems: 'center',
+     alignItems: 'flex-start',
      // Removed marginBottom as XP bar is no longer directly below
   },
   profilePhoto: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    marginBottom: theme.spacing.md,
+
     backgroundColor: theme.colors.secondary, // Fallback bg
   },
   profileInitialContainer: {
@@ -766,10 +769,11 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
      color: theme.colors.background,
   },
   profileName: {
-    fontSize: theme.typography.h2.fontSize,
+    fontSize: theme.typography.h3.fontSize,
     fontWeight: theme.typography.h2.fontWeight,
     color: theme.colors.text,
     marginBottom: theme.spacing.xs,
+    textAlign: 'center'
   },
   levelText: {
     fontSize: theme.typography.h4.fontSize,
@@ -796,7 +800,7 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
   },
   xpBarContainer: {
     width: '100%', // Take full width of header padding
-    alignItems: 'center',
+    alignItems: 'flex-end',
   },
   xpBarBackground: {
     height: 8,
@@ -809,12 +813,13 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
   xpBarForeground: {
     height: '100%',
     backgroundColor: theme.colors.primary,
-    borderRadius: 4,
+    borderRadius: 2,
   },
   xpText: {
     fontSize: 12,
     color: theme.colors.textSecondary,
     marginTop: 2,
+    
   },
   totalXpText: {
      fontSize: 10,
@@ -862,10 +867,10 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
      justifyContent: 'space-around', // Space out buttons
      paddingHorizontal: theme.spacing.lg,
      paddingVertical: theme.spacing.sm,
-     borderBottomWidth: 1,
+     borderBottomWidth: 0,
      borderBottomColor: theme.colors.border,
-     backgroundColor: theme.colors.surface,
-     marginBottom: theme.spacing.md, // Add margin below actions before scroll content starts
+     backgroundColor: theme.colors.background,
+     // Add margin below actions before scroll content starts
   },
   actionButton: {
      flexDirection: 'row',
