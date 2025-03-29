@@ -83,6 +83,7 @@ const ProfileXpBar: React.FC<{
         {level >= 10 ? `Level ${level} (Max)` : `${xpForLevel-xpInLevel} XP to Level ${level + 1}`}
       </Text>
       <Text style={styles.totalXpText}>Total XP: {currentXp}</Text>
+      
     </View>
   );
 };
@@ -402,25 +403,25 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
     setError(null);
 
     try {
-      // Fetch overview and interactions concurrently
-      const [overviewResult, interactionsResult] = await Promise.all([
-        getRelationshipOverview(Number(personId)),
-        getRelationshipInteractionsThread(Number(personId)) // Corrected function name
-      ]);
-
-      // Check for errors in results (assuming API functions throw or return error indicators)
-      // This part depends on how your api.ts handles errors. Adjust as needed.
-      if (!overviewResult) { // Simple check, adjust based on actual API function behavior
-         throw new Error("Failed to load profile overview.");
+      // First fetch the overview data which is critical
+      const overviewResult = await getRelationshipOverview(Number(personId));
+      
+      if (!overviewResult) {
+        throw new Error("Failed to load profile overview.");
       }
-       if (!interactionsResult) { // Simple check
-         throw new Error("Failed to load interaction thread.");
-       }
-
-
+      
       setProfileData(overviewResult);
-      setInteractions(interactionsResult || []); // Handle case where thread might be empty but not an error
-
+      
+      // Then try to fetch interactions, but handle 404 gracefully
+      try {
+        const interactionsResult = await getRelationshipInteractionsThread(Number(personId));
+        setInteractions(interactionsResult || []);
+      } catch (interactionErr) {
+        console.log("[API] Error fetching interactions:", interactionErr);
+        // If it's a 404 "No interactions found" error, just set empty interactions
+        // This is expected for new relationships
+        setInteractions([]);
+      }
     } catch (err) {
       console.error("[API] Error fetching profile data:", err);
       setError(err instanceof Error ? err.message : "An unknown error occurred.");
@@ -670,17 +671,19 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
                 level={profileData?.level || 0}
                 theme={theme}
               />
-            </View>
-          </View>
-
-        
-
-          {/* Categories */}
+              {/* Categories */}
           <View style={styles.categoriesContainer}>
             {profileData?.categories?.map((category, index) => (
               <CategoryTag key={index} label={category} theme={theme} />
             ))}
           </View>
+            </View>
+            
+          </View>
+
+        
+
+          
         </View>
       </View>
 
@@ -784,8 +787,8 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
   categoriesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center', // Center tags
-    marginBottom: theme.spacing.sm, // Add space below tags
+    justifyContent: 'flex-end', // Center tags
+     // Add space below tags
   },
   categoryTag: {
     backgroundColor: theme.colors.border,

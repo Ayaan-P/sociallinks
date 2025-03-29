@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ScrollView } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, Alert, ScrollView, TouchableOpacity } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../App'; // Import the param list type
 import { useTheme } from '../context/ThemeContext'; // Import useTheme
@@ -26,7 +26,11 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
 
   const [name, setName] = useState('');
   const [photoUri, setPhotoUri] = useState<string | undefined>(undefined);
-  const [relationshipCategory, setRelationshipCategory] = useState('');
+  const [relationshipCategory, setRelationshipCategory] = useState('Friend');
+  const [relationshipType, setRelationshipType] = useState('personal');
+  const [reminderInterval, setReminderInterval] = useState('weekly');
+  const [tags, setTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState('');
 
   const handleChoosePhoto = async () => {
     const uri = await pickImage();
@@ -38,9 +42,20 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  const handleAddTag = () => {
+    if (newTag.trim() && !tags.includes(newTag.trim())) {
+      setTags([...tags, newTag.trim()]);
+      setNewTag('');
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setTags(tags.filter(tag => tag !== tagToRemove));
+  };
+
   const handleSubmit = async () => {
-    if (!name || !relationshipCategory) {
-      Alert.alert('Error', 'Please fill in Name and Relationship Category.');
+    if (!name || !relationshipCategory || !relationshipType || !reminderInterval) {
+      Alert.alert('Error', 'Please fill in all required fields.');
       return;
     }
     
@@ -48,18 +63,17 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
       // Create relationship data using the specific payload type
       const relationshipData: CreateRelationshipPayload = {
         name,
-        relationship_type: 'personal', // TODO: Consider making this selectable
-        reminder_interval: 'weekly', // TODO: Consider making this selectable
-        initial_category_name: relationshipCategory, // Use the correct field name
+        relationship_type: relationshipType,
+        reminder_interval: reminderInterval,
+        initial_category_name: relationshipCategory,
         photo_url: photoUri,
-        tags: [] // No tags initially
+        tags: tags
       };
 
       console.log('Submitting new person to API:', relationshipData);
 
       // Call the API to create the relationship
-      // Note: createRelationship in api.ts might need its parameter type updated too
-      const newRelationship = await createRelationship(relationshipData as any); // Temporary cast if api.ts not updated yet
+      const newRelationship = await createRelationship(relationshipData);
       
       Alert.alert('Success', `Link created for ${name}.`);
       navigation.goBack();
@@ -71,33 +85,146 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.label}>Name (Required):</Text>
-      <TextInput
-        style={styles.input}
-        value={name}
-        onChangeText={setName}
-        placeholder="Enter person's name"
-        placeholderTextColor={theme.colors.textSecondary} // Use theme color
-      />
+      <View style={styles.formSection}>
+        <Text style={styles.sectionTitle}>Basic Information</Text>
+        
+        <Text style={styles.label}>Name:</Text>
+        <TextInput
+          style={styles.input}
+          value={name}
+          onChangeText={setName}
+          placeholder="Enter person's name"
+          placeholderTextColor={theme.colors.textSecondary}
+        />
 
-      <Text style={styles.label}>Photo (Optional):</Text>
-      <View style={styles.photoContainer}>
-        {/* TODO: Style Button component or use TouchableOpacity for custom styling */}
-        <Button title="Choose Photo" onPress={handleChoosePhoto} color={theme.colors.primary} />
-        {photoUri && <Text style={styles.photoUriText}>Selected: {photoUri.substring(photoUri.lastIndexOf('/') + 1)}</Text>}
+        <Text style={styles.label}>Photo:</Text>
+        <View style={styles.photoContainer}>
+          <TouchableOpacity 
+            style={styles.button} 
+            onPress={handleChoosePhoto}
+          >
+            <Text style={styles.buttonText}>Choose Photo</Text>
+          </TouchableOpacity>
+          {photoUri && <Text style={styles.photoUriText}>Selected: {photoUri.substring(photoUri.lastIndexOf('/') + 1)}</Text>}
+        </View>
       </View>
 
-      <Text style={styles.label}>Initial Relationship Category (Required):</Text>
-      <TextInput
-        style={styles.input}
-        value={relationshipCategory}
-        onChangeText={setRelationshipCategory}
-        placeholder="e.g., Friend, Business, Family"
-        placeholderTextColor={theme.colors.textSecondary} // Use theme color
-      />
+      <View style={styles.formSection}>
+        {/* <Text style={styles.sectionTitle}>Relationship Details</Text> */}
+        
+        <Text style={styles.label}>Initial Relationship Category:</Text>
+        <View style={styles.optionsContainer}>
+          {['Friend', 'Family', 'Business', 'Acquaintance', 'Romantic'].map(category => (
+            <TouchableOpacity
+              key={category}
+              style={[
+                styles.optionButton,
+                relationshipCategory === category && styles.selectedOption
+              ]}
+              onPress={() => setRelationshipCategory(category)}
+            >
+              <Text 
+                style={[
+                  styles.optionText,
+                  relationshipCategory === category && styles.selectedOptionText
+                ]}
+              >
+                {category}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      {/* TODO: Style Button component or use TouchableOpacity for custom styling */}
-      <Button title="Add Person" onPress={handleSubmit} color={theme.colors.primary} />
+        <Text style={styles.label}>Relationship Type:</Text>
+        <View style={styles.optionsContainer}>
+          {['personal', 'professional', 'family'].map(type => (
+            <TouchableOpacity
+              key={type}
+              style={[
+                styles.optionButton,
+                relationshipType === type && styles.selectedOption
+              ]}
+              onPress={() => setRelationshipType(type)}
+            >
+              <Text 
+                style={[
+                  styles.optionText,
+                  relationshipType === type && styles.selectedOptionText
+                ]}
+              >
+                {type.charAt(0).toUpperCase() + type.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.formSection}>
+        {/* <Text style={styles.sectionTitle}>Reminder Settings</Text> */}
+        
+        <Text style={styles.label}>Reminder Interval:</Text>
+        <View style={styles.optionsContainer}>
+          {['weekly', 'biweekly', 'monthly', 'custom'].map(interval => (
+            <TouchableOpacity
+              key={interval}
+              style={[
+                styles.optionButton,
+                reminderInterval === interval && styles.selectedOption
+              ]}
+              onPress={() => setReminderInterval(interval)}
+            >
+              <Text 
+                style={[
+                  styles.optionText,
+                  reminderInterval === interval && styles.selectedOptionText
+                ]}
+              >
+                {interval.charAt(0).toUpperCase() + interval.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.formSection}>
+        {/* <Text style={styles.sectionTitle}>Tags</Text> */}
+        
+        <View style={styles.tagInputContainer}>
+          <TextInput
+            style={styles.tagInput}
+            value={newTag}
+            onChangeText={setNewTag}
+            placeholder="Add a tag"
+            placeholderTextColor={theme.colors.textSecondary}
+          />
+          <TouchableOpacity 
+            style={styles.addTagButton} 
+            onPress={handleAddTag}
+          >
+            <Text style={styles.addTagButtonText}>Add</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {tags.length > 0 && (
+          <View style={styles.tagsContainer}>
+            {tags.map(tag => (
+              <View key={tag} style={styles.tag}>
+                <Text style={styles.tagText}>{tag}</Text>
+                <TouchableOpacity onPress={() => handleRemoveTag(tag)}>
+                  <Text style={styles.removeTagText}>×</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+
+      <TouchableOpacity 
+        style={styles.submitButton} 
+        onPress={handleSubmit}
+      >
+        <Text style={styles.submitButtonText}>Add Person</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 };
@@ -107,34 +234,153 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
     padding: theme.spacing.md,
-    backgroundColor: theme.colors.background, // Use theme background
+    backgroundColor: theme.colors.background,
+  },
+  formSection: {
+    marginBottom: theme.spacing.lg,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 10,
+    padding: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  sectionTitle: {
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.h4.fontWeight,
+    color: theme.colors.primary,
+    marginBottom: theme.spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+
   },
   label: {
     fontSize: theme.typography.h4.fontSize,
     fontWeight: theme.typography.h4.fontWeight,
-    color: theme.colors.text, // Use theme text color
+    color: theme.colors.text,
     marginBottom: theme.spacing.sm,
+   
   },
   input: {
     borderWidth: 1,
-    borderColor: theme.colors.border, // Use theme border color
-    backgroundColor: theme.colors.surface, // Use theme surface for input background
-    color: theme.colors.text, // Use theme text color for input text
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+    color: theme.colors.text,
     padding: theme.spacing.sm,
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
     borderRadius: 5,
     fontSize: theme.typography.body.fontSize,
   },
   photoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
   },
   photoUriText: {
     marginLeft: theme.spacing.sm,
     fontSize: theme.typography.caption.fontSize,
-    color: theme.colors.textSecondary, // Use theme secondary text color
+    color: theme.colors.textSecondary,
     flexShrink: 1,
+  },
+  button: {
+    backgroundColor: theme.colors.primary,
+    padding: theme.spacing.sm,
+    borderRadius: 50,
+  },
+  buttonText: {
+    color: theme.isDark ? theme.colors.background : theme.colors.background,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  optionsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    
+  },
+  optionButton: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 50,
+    padding: theme.spacing.sm,
+    marginRight: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  selectedOption: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  optionText: {
+    color: theme.colors.text,
+  },
+  selectedOptionText: {
+    color: theme.isDark ? theme.colors.background : theme.colors.background,
+  },
+  tagInputContainer: {
+    flexDirection: 'row',
+    
+  },
+  tagInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+    color: theme.colors.text,
+    padding: theme.spacing.sm,
+    borderRadius: 50,
+    fontSize: theme.typography.body.fontSize,
+    marginRight: theme.spacing.sm,
+  },
+  addTagButton: {
+    backgroundColor: theme.colors.primary,
+    padding: theme.spacing.sm,
+    borderRadius: 50,
+    justifyContent: 'center',
+  },
+  addTagButtonText: {
+    color: theme.isDark ? theme.colors.background : theme.colors.text,
+    fontWeight: 'bold',
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: theme.spacing.sm,
+  },
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary + '33', // Adding transparency to primary color
+    borderRadius: 50,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 4,
+    marginRight: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  tagText: {
+    color: theme.colors.text,
+    fontSize: theme.typography.caption.fontSize,
+  },
+  removeTagText: {
+    color: theme.colors.error || 'red',
+    marginLeft: 4,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  submitButton: {
+    backgroundColor: theme.colors.primary,
+    padding: theme.spacing.md,
+    borderRadius: 50,
+    marginTop: theme.spacing.sm,
+    marginBottom: theme.spacing.xl,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  submitButtonText: {
+    color: theme.isDark ? theme.colors.background : theme.colors.text,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    fontSize: theme.typography.body.fontSize,
   },
 });
 
