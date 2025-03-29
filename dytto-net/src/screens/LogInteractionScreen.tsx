@@ -1,15 +1,28 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ScrollView } from 'react-native';
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  StyleSheet, 
+  TouchableOpacity, 
+  ActivityIndicator, 
+  ScrollView, 
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView
+} from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
-import { RootStackParamList } from '../../App'; // Import the param list type
-import { useTheme } from '../context/ThemeContext'; // Import useTheme
-import { Theme } from '../types/theme'; // Import Theme type
+import { RootStackParamList } from '../../App';
+import { useTheme } from '../context/ThemeContext';
+import { Theme } from '../types/theme';
+import { createInteraction } from '../services/api';
 
-// Define navigation props type using the RootStackParamList
+// Define navigation props type
 type LogInteractionScreenNavigationProp = StackNavigationProp<RootStackParamList, 'LogInteraction'>;
 
-// Define route props to potentially receive personId if navigating from a specific person
+// Define route props to receive personId and personName
 type LogInteractionScreenRouteProp = RouteProp<RootStackParamList, 'LogInteraction'>;
 
 interface Props {
@@ -17,66 +30,159 @@ interface Props {
   route: LogInteractionScreenRouteProp;
 }
 
+// Predefined tone tags for quick selection
+const TONE_TAGS = [
+  'Happy', 'Deep', 'Fun', 'Business', 'Casual', 'Serious', 'Vulnerable', 'Draining'
+];
+
 const LogInteractionScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { theme } = useTheme(); // Use theme context
-  const styles = themedStyles(theme); // Generate themed styles
+  const { theme } = useTheme();
+  const styles = themedStyles(theme);
+  const { personId = '', personName = 'Unknown' } = route.params;
+  
+  const [interactionLog, setInteractionLog] = useState('');
+  const [toneTag, setToneTag] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const personId = route.params?.personId;
-  const personName = route.params?.personName || 'Selected Person';
+  // Update navigation options with themed styles
+  React.useLayoutEffect(() => {
+    navigation.setOptions({
+      title: `Interaction`,
+      headerStyle: { backgroundColor: theme.colors.background },
+      headerTintColor: theme.colors.text,
+      headerTitleStyle: { color: theme.colors.text }
+    });
+  }, [navigation, personName, theme]);
 
-  const [note, setNote] = useState('');
-  const [sentimentTag, setSentimentTag] = useState('');
-
-  const handleLogSubmit = async () => {
-    if (!note) {
-      Alert.alert('Error', 'Please enter a note for the interaction.');
+  const handleSubmit = async () => {
+    if (!interactionLog.trim()) {
+      setError('Please enter an interaction log');
       return;
     }
-    const interactionData = {
-      personId: personId || 'unknown',
-      note,
-      sentimentTag,
-      timestamp: new Date().toISOString(),
-      xpGain: 1,
-    };
-    console.log(`Logging interaction for ${personName} (ID: ${interactionData.personId}):`, interactionData);
+
+    setLoading(true);
+    setError(null);
+
     try {
-      // --- Placeholder API Call ---
-      Alert.alert('Success', `Interaction logged for ${personName}. +1 XP!`);
-      navigation.goBack();
-    } catch (error) {
-      console.error('Error logging interaction:', error);
-      Alert.alert('Error', 'Failed to log interaction. Please try again.');
+      // Create the interaction using the API
+      const result = await createInteraction({
+        relationship_id: personId,
+        interaction_log: interactionLog.trim(),
+        tone_tag: toneTag.trim() || ''
+      });
+
+      // Get XP gain from result
+      const xpGain = result.xp_gain || 1;
+
+      // Show success message
+      Alert.alert(
+        'Success',
+        `Interaction logged successfully! +${xpGain} XP`,
+        [
+          { 
+            text: 'OK', 
+            onPress: () => {
+              // Navigate back to the previous screen
+              navigation.goBack();
+            }
+          }
+        ]
+      );
+    } catch (err) {
+      console.error('Error logging interaction:', err);
+      setError('Failed to log interaction. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
+  const selectToneTag = (tag: string) => {
+    setToneTag(tag === toneTag ? '' : tag); // Toggle if already selected
+  };
+
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Log Interaction with {personName}</Text>
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView 
+        style={styles.keyboardAvoidingContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={100}
+      >
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.headerSection}>
+          <Text style={styles.headerTitle}>Log Interaction</Text>
+          <Text style={styles.headerSubtitle}>with {personName}</Text>
+        </View>
 
-      <Text style={styles.label}>Interaction Note (Required):</Text>
-      <TextInput
-        style={styles.textArea}
-        value={note}
-        onChangeText={setNote}
-        placeholder="What did you talk about? What happened?"
-        placeholderTextColor={theme.colors.textSecondary} // Use theme color
-        multiline={true}
-        numberOfLines={4}
-      />
+        <View style={styles.formSection}>
+          <Text style={styles.label}>What did you talk about?</Text>
+          <TextInput
+            style={styles.textInput}
+            multiline
+            numberOfLines={6}
+            placeholder="Describe your interaction..."
+            placeholderTextColor={theme.colors.textSecondary}
+            value={interactionLog}
+            onChangeText={setInteractionLog}
+          />
 
-      <Text style={styles.label}>Sentiment Tag (Optional):</Text>
-      <TextInput
-        style={styles.input}
-        value={sentimentTag}
-        onChangeText={setSentimentTag}
-        placeholder="e.g., Happy, Deep, Fun, Draining"
-        placeholderTextColor={theme.colors.textSecondary} // Use theme color
-      />
+          <Text style={styles.label}>Tone Tag (optional)</Text>
+          <TextInput
+            style={styles.toneInput}
+            placeholder="e.g., Happy, Deep, Business, etc."
+            placeholderTextColor={theme.colors.textSecondary}
+            value={toneTag}
+            onChangeText={setToneTag}
+          />
 
-      {/* TODO: Style Button component or use TouchableOpacity for custom styling */}
-      <Button title="Log Interaction (+1 XP)" onPress={handleLogSubmit} color={theme.colors.primary} />
-    </ScrollView>
+          <View style={styles.toneTagsContainer}>
+            {TONE_TAGS.map((tag) => (
+              <TouchableOpacity
+                key={tag}
+                style={[
+                  styles.toneTagButton,
+                  toneTag === tag && styles.toneTagButtonSelected
+                ]}
+                onPress={() => selectToneTag(tag)}
+              >
+                <Text 
+                  style={[
+                    styles.toneTagButtonText,
+                    toneTag === tag && styles.toneTagButtonTextSelected
+                  ]}
+                >
+                  {tag}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {error && <Text style={styles.errorText}>{error}</Text>}
+        </View>
+      </ScrollView>
+
+      <View style={styles.footer}>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+            <Text style={styles.loadingText}>Logging interaction...</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.submitButton}
+            onPress={handleSubmit}
+            disabled={!interactionLog.trim()}
+          >
+            <Text style={styles.submitButtonText}>Submit</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
@@ -84,43 +190,120 @@ const LogInteractionScreen: React.FC<Props> = ({ navigation, route }) => {
 const themedStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    padding: theme.spacing.md,
-    backgroundColor: theme.colors.background, // Use theme background
+    backgroundColor: theme.colors.background,
   },
-  title: {
-    fontSize: theme.typography.h3.fontSize,
-    fontWeight: theme.typography.h3.fontWeight,
-    color: theme.colors.text, // Use theme text color
+  keyboardAvoidingContainer: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    padding: theme.spacing.md,
+  },
+  headerSection: {
     marginBottom: theme.spacing.lg,
+  },
+  headerTitle: {
+    fontSize: theme.typography.h2.fontSize,
+    fontWeight: theme.typography.h2.fontWeight,
+    color: theme.colors.text,
     textAlign: 'center',
   },
+  headerSubtitle: {
+    fontSize: theme.typography.body.fontSize,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+  },
+  formSection: {
+    marginBottom: theme.spacing.xl,
+  },
   label: {
-    fontSize: theme.typography.h4.fontSize,
-    fontWeight: theme.typography.h4.fontWeight,
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+    marginTop: theme.spacing.md,
+  },
+  textInput: {
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 8,
+    padding: theme.spacing.sm,
+    fontSize: theme.typography.body.fontSize,
+    color: theme.colors.text,
+    textAlignVertical: 'top',
+    minHeight: 150,
+  },
+  toneInput: {
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 8,
+    padding: theme.spacing.sm,
+    fontSize: theme.typography.body.fontSize,
     color: theme.colors.text,
     marginBottom: theme.spacing.sm,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border, // Use theme border color
-    backgroundColor: theme.colors.surface, // Use theme surface
-    color: theme.colors.text, // Use theme text color
-    padding: theme.spacing.sm,
-    marginBottom: theme.spacing.md,
-    borderRadius: 5,
-    fontSize: theme.typography.body.fontSize,
+  toneTagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: theme.spacing.xs,
   },
-  textArea: {
+  toneTagButton: {
+    backgroundColor: theme.colors.surface,
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: 16,
+    marginRight: theme.spacing.xs,
+    marginBottom: theme.spacing.xs,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
-    color: theme.colors.text,
+  },
+  toneTagButtonSelected: {
+    backgroundColor: theme.colors.primary + '20',
+    borderColor: theme.colors.primary,
+  },
+  toneTagButtonText: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+  },
+  toneTagButtonTextSelected: {
+    color: theme.colors.primary,
+    fontWeight: '600',
+  },
+  errorText: {
+    color: theme.colors.error,
+    fontSize: theme.typography.caption.fontSize,
+    marginTop: theme.spacing.sm,
+  },
+  footer: {
+    padding: theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+  },
+  submitButton: {
+    backgroundColor: theme.colors.primary,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
     padding: theme.spacing.sm,
-    marginBottom: theme.spacing.md,
-    borderRadius: 5,
-    fontSize: theme.typography.body.fontSize,
-    height: 100,
-    textAlignVertical: 'top',
+  },
+  loadingText: {
+    color: theme.colors.textSecondary,
+    marginLeft: theme.spacing.sm,
   },
 });
 

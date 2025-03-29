@@ -13,10 +13,12 @@ The base URL for all API endpoints is the root of the backend application (`/`).
     *   Request Body (JSON):
         ```json
         {
-            "name": "string",             // Required
-            "relationship_type": "string",  // Required
+            "name": "string",              // Required
+            "relationship_type": "string", // Required
             "reminder_interval": "string", // Required
-            "photo_url": "string"          // Optional
+            "category": "string",          // Required (e.g., "Friend", "Business")
+            "photo_url": "string",         // Optional
+            "tags": ["string", "string"]   // Optional (e.g., ["High Priority", "Close Friend"])
         }
         ```
     *   Response (JSON):
@@ -46,11 +48,13 @@ The base URL for all API endpoints is the root of the backend application (`/`).
     *   Request Body (JSON):
         ```json
         {
+            // Any fields from the relationship object can be updated
             "name": "string",
             "relationship_type": "string",
             "reminder_interval": "string",
-            "photo_url": "string"
-            // Include any fields you want to update
+            "category": "string",
+            "photo_url": "string",
+            "tags": ["string", "string"]
         }
         ```
     *   Response (JSON):
@@ -69,7 +73,7 @@ The base URL for all API endpoints is the root of the backend application (`/`).
 ### Interactions
 
 *   **POST /interactions**
-    *   Description: Creates a new interaction log for a relationship.
+    *   Description: Creates a new interaction log for a relationship and processes it with AI to provide insights.
     *   Request Body (JSON):
         ```json
         {
@@ -79,7 +83,23 @@ The base URL for all API endpoints is the root of the backend application (`/`).
         }
         ```
     *   Response (JSON):
-        *   Success (201 Created): Returns the newly created interaction log object.
+        *   Success (201 Created): Returns the newly created interaction log object with AI-generated insights:
+            ```json
+            {
+                "id": integer,
+                "relationship_id": integer,
+                "created_at": "timestamp",
+                "interaction_log": "string",
+                "tone_tag": "string",
+                "sentiment_analysis": "string",  // AI-generated sentiment analysis
+                "xp_gain": integer,              // XP points awarded (1-3)
+                "suggested_tone": "string",      // AI-suggested tone tag
+                "evolution_suggestion": "string", // Potential relationship category evolution
+                "ai_reasoning": "string",        // Explanation for XP score
+                "patterns": "string",            // Detected recurring patterns
+                "interaction_suggestion": "string" // Suggestion for next interaction
+            }
+            ```
         *   Error (400 Bad Request): Missing required fields.
         *   Error (500 Internal Server Error): Supabase error or other server error.
 
@@ -131,6 +151,66 @@ The base URL for all API endpoints is the root of the backend application (`/`).
     *   Response (JSON):
         *   Success (200 OK): Returns a message indicating success.
         *   Error (500 Internal Server Error): Supabase error or other server error.
+
+### Dashboard Data
+
+*   **GET /dashboard_data**
+    *   Description: Retrieves data for the dashboard view, including all relationships with their latest interaction information.
+    *   Response (JSON):
+        *   Success (200 OK): Returns a list of dashboard items:
+            ```json
+            [
+                {
+                    "id": integer,
+                    "name": "string",
+                    "photo_url": "string",
+                    "level": integer,
+                    "days_since_interaction": integer or "Never",
+                    "category": "string",
+                    "tags": ["string", "string"]
+                },
+                // More dashboard items...
+            ]
+            ```
+        *   Error (500 Internal Server Error): Supabase error or other server error.
+
+### Profile View Endpoints
+
+*   **GET /relationships/\<relationship_id>/overview**
+    *   Description: Retrieves the profile overview data for a specific relationship.
+    *   Path Parameters:
+        *   `relationship_id` (integer): The ID of the relationship.
+    *   Response (JSON):
+        ```json
+        {
+            "photo_url": "string",
+            "name": "string",
+            "level": integer,
+            "reminder_settings": "string",
+            "xp_bar": integer, 
+            "last_interaction": { // Interaction object or null
+                "id": integer,
+                "relationship_id": integer,
+                "created_at": "timestamp",
+                "interaction_log": "string",
+                "tone_tag": "string" 
+            },
+            "relationship_tags": ["string", "string"] 
+        }
+        ```
+        *   Success (200 OK): Returns the profile overview data.
+        *   Error (404 Not Found): Relationship not found.
+        *   Error (500 Internal Server Error): Supabase error or other server error.
+
+*   **GET /relationships/\<relationship_id>/interactions_thread**
+    *   Description: Retrieves the interaction thread for a specific relationship.
+    *   Path Parameters:
+        *   `relationship_id` (integer): The ID of the relationship.
+    *   Response (JSON):
+        *   Success (200 OK): Returns a list of interaction log objects, ordered by `created_at` in descending order.
+        *   Error (404 Not Found): No interactions found for this relationship.
+        *   Error (500 Internal Server Error): Supabase error or other server error.
+
 
 ### Quests
 
@@ -197,3 +277,32 @@ The base URL for all API endpoints is the root of the backend application (`/`).
 *   All endpoints return JSON responses.
 *   Error responses typically include an `error` key with a descriptive message.
 *   Ensure your Supabase setup is correctly configured as described in the `.env` file for these endpoints to function correctly.
+
+## AI Processing
+
+The backend uses Anthropic's Claude AI model to analyze interaction logs and provide relationship insights. This functionality is automatically applied when creating a new interaction log through the `/interactions` POST endpoint.
+
+### AI Processing Features
+
+*   **Sentiment Analysis**: Analyzes the emotional tone of the interaction (positive, negative, neutral, mixed) and provides a nuanced description of emotions present.
+
+*   **XP Calculation**: Awards experience points (1-3) based on the depth and quality of the interaction, taking into account the current relationship level:
+    *   Level 1-3 relationships: Points awarded generously to encourage growth
+    *   Level 4-7 relationships: Require more depth for the same XP
+    *   Level 8-10 relationships: Require substantial effort and depth
+
+*   **Relationship Evolution**: Suggests potential new relationship categories when appropriate (e.g., a "Friend" relationship might evolve to add "Business" if work topics become frequent).
+
+*   **Interaction Suggestions**: Provides specific suggestions for deepening the relationship based on the entry. At milestone levels (2, 4, 6, etc.), suggests "quests" like "Ask about their childhood" or "Share a personal belief".
+
+*   **Pattern Detection**: Identifies recurring themes or patterns in interactions over time.
+
+### Configuration
+
+The AI processing functionality requires an Anthropic API key to be set in the `.env` file:
+
+```
+ANTHROPIC_API_KEY="your-api-key-here"
+```
+
+Without this key, the AI processing features will not work.

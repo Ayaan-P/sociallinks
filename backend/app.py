@@ -2,7 +2,7 @@ import os
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from services.ai_processing import analyze_sentiment, calculate_xp, get_relationship_level, update_relationship_level
+from services.ai_processing import analyze_sentiment, calculate_xp, get_relationship_level, update_relationship_level, process_interaction_log_ai, detect_patterns, suggest_evolution, suggest_interaction
 from datetime import datetime, timezone
 
 # Load environment variables from .env file
@@ -57,11 +57,16 @@ def create_relationship():
             'reminder_interval': reminder_interval,
             'category': category,
             'photo_url': photo_url,
-            'tags': tags
+            'tags': tags,
+            'level': 1,  # Initialize level to 1
+            'xp': 0      # Initialize XP to 0
         }).execute()
 
-        if response.error:
+        if hasattr(response, 'error') and response.error:
             return jsonify({"error": response.error.message}), 500
+        
+        if not response.data:
+            return jsonify({"error": "Failed to create relationship in database"}), 500
 
         return jsonify(response.data[0]), 201 # Return the newly created relationship
 
@@ -159,28 +164,80 @@ def create_interaction_log():
             'tone_tag': tone_tag
         }).execute()
 
-        if response.error:
+        if hasattr(response, 'error') and response.error:
             return jsonify({"error": response.error.message}), 500
 
         # --- AI Processing ---
-        sentiment = analyze_sentiment(interaction_log)
-        xp_gain = calculate_xp(interaction_log)
-        suggested_tone = sentiment # Placeholder for AI suggested tone
-        evolution_suggestion = None # Placeholder for AI evolution suggestion
+        # Get current relationship level
+        current_level = get_relationship_level(relationship_id)
+        
+        # Process the interaction log with AI
+        sentiment_analysis, xp_gain, reasoning, patterns, evolution_suggestion, interaction_suggestion = process_interaction_log_ai(interaction_log, current_level)
+        
+        # Use detailed sentiment analysis as suggested tone
+        suggested_tone = sentiment_analysis
 
         # --- Level Up Logic ---
         current_level = get_relationship_level(relationship_id)
-        new_level = current_level + xp_gain
-        # In a real application, update the relationship level in the database
-        # update_relationship_level(relationship_id, new_level)
+        new_level = current_level + int(xp_gain)
+        # In a real application, update_relationship_level(relationship_id, new_level, new_level_value=new_level) # Assuming you want to update level in db
 
         interaction_data = response.data[0]
-        interaction_data['sentiment'] = sentiment
-        interaction_data['xp_gain'] = xp_gain
+        interaction_data['sentiment_analysis'] = sentiment_analysis  # Detailed sentiment analysis from AI
+        interaction_data['xp_gain'] = xp_gain  # XP gain from AI
         interaction_data['suggested_tone'] = suggested_tone
         interaction_data['evolution_suggestion'] = evolution_suggestion
+        interaction_data['ai_reasoning'] = reasoning  # Include AI reasoning in response
+        interaction_data['patterns'] = patterns  # Include detected patterns
+        interaction_data['interaction_suggestion'] = interaction_suggestion  # Include interaction suggestion
 
-        return jsonify(interaction_data), 201 # Return the created interaction log with AI feedback
+        # Update the relationship level in the database
+        try:
+            # Get current relationship data
+            relationship_response = supabase.table('relationships').select("*").eq('id', relationship_id).execute()
+            if hasattr(relationship_response, 'error') and relationship_response.error:
+                print(f"Error fetching relationship data: {relationship_response.error.message}")
+            elif relationship_response.data:
+                relationship_data = relationship_response.data[0]
+                
+                # Get current level and XP
+                current_level = relationship_data.get('level', 1)
+                current_xp = relationship_data.get('xp', 0)
+                
+                # Add new XP
+                new_xp = current_xp + int(xp_gain)
+                
+                # Calculate new level (simple implementation - 100 XP per level)
+                xp_per_level = 100
+                new_level = 1 + (new_xp // xp_per_level)
+                
+                print(f"Updating relationship {relationship_id}: level {current_level}->{new_level}, XP {current_xp}->{new_xp}")
+                
+                # Update both level and XP
+                update_data = {
+                    'level': new_level,
+                    'xp': new_xp
+                }
+                
+                # Update in database
+                update_response = supabase.table('relationships').update(update_data).eq('id', relationship_id).execute()
+                
+                if hasattr(update_response, 'error') and update_response.error:
+                    print(f"Error updating relationship: {update_response.error.message}")
+                else:
+                    print(f"Successfully updated relationship: level={new_level}, xp={new_xp}")
+                    
+                    # Verify the update
+                    verify_response = supabase.table('relationships').select("*").eq('id', relationship_id).execute()
+                    if verify_response.data:
+                        verify_data = verify_response.data[0]
+                        print(f"Verified update: level={verify_data.get('level')}, xp={verify_data.get('xp')}")
+            else:
+                print(f"No relationship data found for ID: {relationship_id}")
+        except Exception as e:
+            print(f"Exception updating relationship: {str(e)}")
+
+        return jsonify(interaction_data), 201  # Return the created interaction log with AI feedback
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -254,7 +311,7 @@ def get_dashboard_data():
     for relationship in relationships:
         last_interaction = None
         interactions_response = supabase.table('interactions').select("*").eq('relationship_id', relationship['id']).order('created_at', desc=True).limit(1).execute()
-        if not hasattr(interactions_response, 'error') or not interactions_response.error and interactions_response.data:
+        if (not hasattr(interactions_response, 'error') or not interactions_response.error) and interactions_response.data:
             last_interaction = interactions_response.data[0]
 
         days_since_interaction = "Never"
@@ -266,15 +323,77 @@ def get_dashboard_data():
         dashboard_item = {
             "id": relationship['id'],
             "name": relationship['name'],
-            "photo_url": relationship['photo_url'],
-            "level": relationship['level'], # Assuming level is directly available in relationship data
+            "photo_url": relationship.get('photo_url'),
+            "level": relationship.get('level', 1), # Default level to 1 if not set
             "days_since_interaction": days_since_interaction,
             "category": relationship['category'],
-            "tags": relationship['tags']
+            "tags": relationship.get('tags', [])
         }
         dashboard_items.append(dashboard_item)
 
     return dashboard_items
+
+# --- Profile View Endpoints ---
+
+# API endpoint to get relationship profile overview
+@app.route('/relationships/<int:relationship_id>/overview', methods=['GET'])
+def get_relationship_overview(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Fetch relationship data
+        relationship_response = supabase.table('relationships').select("*").eq('id', relationship_id).execute()
+        if not relationship_response.data:
+            return jsonify({"error": "Relationship not found"}), 404
+        relationship_data = dict(relationship_response.data[0])
+        print(f"Overview for relationship {relationship_id}: level = {relationship_data.get('level', 1)}")
+
+        # Fetch last interaction log
+        last_interaction_response = supabase.table('interactions').select("*").eq('relationship_id', relationship_id).order('created_at', desc=True).limit(1).execute()
+        last_interaction_data = dict(last_interaction_response.data[0]) if last_interaction_response.data else None
+
+        # Calculate XP bar value (XP progress within current level)
+        xp_per_level = 100
+        total_xp = relationship_data.get('xp', 0)
+        level = relationship_data.get('level', 1)
+        xp_bar = total_xp % xp_per_level  # XP progress within current level
+        
+        overview_data = {
+            "photo_url": relationship_data.get('photo_url'),
+            "name": relationship_data['name'],
+            "level": level,
+            "reminder_settings": relationship_data.get('reminder_interval'),
+            "xp_bar": xp_bar,
+            "total_xp": total_xp,  # Include total XP
+            "last_interaction": last_interaction_data,
+            "relationship_tags": relationship_data.get('tags', [])
+        }
+
+        return jsonify(overview_data), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# API endpoint to get relationship interaction thread
+@app.route('/relationships/<int:relationship_id>/interactions_thread', methods=['GET'])
+def get_relationship_interaction_thread(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Fetch interaction logs ordered by created_at desc
+        interactions_response = supabase.table('interactions').select("*").eq('relationship_id', relationship_id).order('created_at', desc=True).execute()
+        if not interactions_response.data: # Check if data is empty
+            return jsonify({"error": "No interactions found for this relationship"}), 404
+
+
+        interaction_thread_data = [dict(row) for row in interactions_response.data]
+        return jsonify(interaction_thread_data), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     # Run the Flask app
