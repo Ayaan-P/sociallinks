@@ -5,6 +5,7 @@ import { RootStackParamList } from '../../App'; // Import the param list type
 import { useTheme } from '../context/ThemeContext'; // Import useTheme
 import { Theme } from '../types/theme'; // Import Theme type
 import { createRelationship } from '../services/api'; // Import API service
+import { CreateRelationshipPayload } from '../types/Relationship'; // Import payload type
 
 // Define navigation props type using the RootStackParamList
 type AddPersonScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AddPerson'>;
@@ -44,20 +45,21 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
     }
     
     try {
-      // Create relationship data in the format expected by the backend API
-      const relationshipData = {
+      // Create relationship data using the specific payload type
+      const relationshipData: CreateRelationshipPayload = {
         name,
-        relationship_type: 'personal', // Default type
-        reminder_interval: 'weekly', // Default reminder interval
-        category: relationshipCategory,
+        relationship_type: 'personal', // TODO: Consider making this selectable
+        reminder_interval: 'weekly', // TODO: Consider making this selectable
+        initial_category_name: relationshipCategory, // Use the correct field name
         photo_url: photoUri,
         tags: [] // No tags initially
       };
-      
+
       console.log('Submitting new person to API:', relationshipData);
-      
+
       // Call the API to create the relationship
-      const newRelationship = await createRelationship(relationshipData);
+      // Note: createRelationship in api.ts might need its parameter type updated too
+      const newRelationship = await createRelationship(relationshipData as any); // Temporary cast if api.ts not updated yet
       
       Alert.alert('Success', `Link created for ${name}.`);
       navigation.goBack();

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  StyleSheet, 
-  TouchableOpacity, 
-  ActivityIndicator, 
-  ScrollView, 
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  ScrollView,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -18,6 +18,7 @@ import { RootStackParamList } from '../../App';
 import { useTheme } from '../context/ThemeContext';
 import { Theme } from '../types/theme';
 import { createInteraction } from '../services/api';
+import { CreateInteractionPayload } from '../types/Interaction'; // Import payload type
 
 // Define navigation props type
 type LogInteractionScreenNavigationProp = StackNavigationProp<RootStackParamList, 'LogInteraction'>;
@@ -39,7 +40,7 @@ const LogInteractionScreen: React.FC<Props> = ({ navigation, route }) => {
   const { theme } = useTheme();
   const styles = themedStyles(theme);
   const { personId = '', personName = 'Unknown' } = route.params;
-  
+
   const [interactionLog, setInteractionLog] = useState('');
   const [toneTag, setToneTag] = useState('');
   const [loading, setLoading] = useState(false);
@@ -48,12 +49,12 @@ const LogInteractionScreen: React.FC<Props> = ({ navigation, route }) => {
   // Update navigation options with themed styles
   React.useLayoutEffect(() => {
     navigation.setOptions({
-      title: `Interaction`,
+      title: `Interaction`, // Simplified title
       headerStyle: { backgroundColor: theme.colors.background },
       headerTintColor: theme.colors.text,
       headerTitleStyle: { color: theme.colors.text }
     });
-  }, [navigation, personName, theme]);
+  }, [navigation, theme]); // Removed personName dependency as it's in subtitle
 
   const handleSubmit = async () => {
     if (!interactionLog.trim()) {
@@ -65,25 +66,36 @@ const LogInteractionScreen: React.FC<Props> = ({ navigation, route }) => {
     setError(null);
 
     try {
-      // Create the interaction using the API
-      const result = await createInteraction({
-        relationship_id: personId,
+      // Ensure relationship_id is a number
+      const relationshipIdNumber = Number(personId);
+      if (isNaN(relationshipIdNumber)) {
+        throw new Error("Invalid Relationship ID provided.");
+      }
+
+      // Create the interaction using the specific payload type
+      const interactionData: CreateInteractionPayload = {
+        relationship_id: relationshipIdNumber, // Pass the converted number
         interaction_log: interactionLog.trim(),
-        tone_tag: toneTag.trim() || ''
-      });
+        tone_tag: toneTag.trim() || undefined // Send undefined if empty, matches optional type
+      };
+
+      console.log('Submitting interaction:', interactionData);
+
+      // Call the API service
+      const result = await createInteraction(interactionData);
 
       // Get XP gain from result
-      const xpGain = result.xp_gain || 1;
+      const xpGain = result.xp_gain || 1; // Default to 1 if not provided
 
       // Show success message
       Alert.alert(
         'Success',
         `Interaction logged successfully! +${xpGain} XP`,
         [
-          { 
-            text: 'OK', 
+          {
+            text: 'OK',
             onPress: () => {
-              // Navigate back to the previous screen
+              // Navigate back to the previous screen (likely Profile)
               navigation.goBack();
             }
           }
@@ -91,7 +103,7 @@ const LogInteractionScreen: React.FC<Props> = ({ navigation, route }) => {
       );
     } catch (err) {
       console.error('Error logging interaction:', err);
-      setError('Failed to log interaction. Please try again.');
+      setError(err instanceof Error ? err.message : 'Failed to log interaction. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -103,12 +115,12 @@ const LogInteractionScreen: React.FC<Props> = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.keyboardAvoidingContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={100}
+        keyboardVerticalOffset={100} // Adjust as needed
       >
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollViewContent}
         keyboardShouldPersistTaps="handled"
@@ -131,13 +143,14 @@ const LogInteractionScreen: React.FC<Props> = ({ navigation, route }) => {
           />
 
           <Text style={styles.label}>Tone Tag (optional)</Text>
-          <TextInput
+          {/* Removed separate input, rely on buttons */}
+          {/* <TextInput
             style={styles.toneInput}
             placeholder="e.g., Happy, Deep, Business, etc."
             placeholderTextColor={theme.colors.textSecondary}
             value={toneTag}
             onChangeText={setToneTag}
-          />
+          /> */}
 
           <View style={styles.toneTagsContainer}>
             {TONE_TAGS.map((tag) => (
@@ -149,7 +162,7 @@ const LogInteractionScreen: React.FC<Props> = ({ navigation, route }) => {
                 ]}
                 onPress={() => selectToneTag(tag)}
               >
-                <Text 
+                <Text
                   style={[
                     styles.toneTagButtonText,
                     toneTag === tag && styles.toneTagButtonTextSelected
@@ -173,9 +186,9 @@ const LogInteractionScreen: React.FC<Props> = ({ navigation, route }) => {
           </View>
         ) : (
           <TouchableOpacity
-            style={styles.submitButton}
+            style={[styles.submitButton, !interactionLog.trim() && styles.submitButtonDisabled]}
             onPress={handleSubmit}
-            disabled={!interactionLog.trim()}
+            disabled={!interactionLog.trim() || loading} // Disable while loading too
           >
             <Text style={styles.submitButtonText}>Submit</Text>
           </TouchableOpacity>
@@ -200,6 +213,7 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
   },
   scrollViewContent: {
     padding: theme.spacing.md,
+    paddingBottom: theme.spacing.xl, // Ensure space at bottom
   },
   headerSection: {
     marginBottom: theme.spacing.lg,
@@ -214,9 +228,10 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     fontSize: theme.typography.body.fontSize,
     color: theme.colors.textSecondary,
     textAlign: 'center',
+    marginTop: theme.spacing.xs,
   },
   formSection: {
-    marginBottom: theme.spacing.xl,
+    // Removed marginBottom as paddingBottom on scroll content handles it
   },
   label: {
     fontSize: theme.typography.body.fontSize,
@@ -236,7 +251,7 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     textAlignVertical: 'top',
     minHeight: 150,
   },
-  toneInput: {
+  toneInput: { // Kept style definition if needed later
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -249,7 +264,7 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
   toneTagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: theme.spacing.xs,
+    marginTop: theme.spacing.sm, // Add margin after label
   },
   toneTagButton: {
     backgroundColor: theme.colors.surface,
@@ -277,6 +292,7 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     color: theme.colors.error,
     fontSize: theme.typography.caption.fontSize,
     marginTop: theme.spacing.sm,
+    textAlign: 'center',
   },
   footer: {
     padding: theme.spacing.md,
@@ -290,6 +306,9 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
+  submitButtonDisabled: {
+     backgroundColor: theme.colors.border, // Use a disabled color
+  },
   submitButtonText: {
     color: '#fff',
     fontWeight: '600',
@@ -299,7 +318,8 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: theme.spacing.sm,
+    padding: theme.spacing.sm, // Match button padding
+    height: 48, // Match button height approx
   },
   loadingText: {
     color: theme.colors.textSecondary,

@@ -1,6 +1,7 @@
 import axios from 'axios';
-import { Relationship } from '../types/Relationship';
-import { Interaction } from '../types/Interaction';
+// Import specific types including payloads
+import { Relationship, CreateRelationshipPayload, UpdateRelationshipPayload, RelationshipDashboardItem, RelationshipOverview } from '../types/Relationship';
+import { Interaction, CreateInteractionPayload } from '../types/Interaction';
 import { Quest } from '../types/Quest';
 
 // Define the base URL for the API
@@ -92,14 +93,8 @@ export const getRelationship = async (id: string | number): Promise<Relationship
   }
 };
 
-export const createRelationship = async (relationshipData: {
-  name: string;
-  relationship_type: string;
-  reminder_interval: string;
-  category: string;
-  photo_url?: string;
-  tags?: string[];
-}): Promise<Relationship> => {
+// Update createRelationship to use CreateRelationshipPayload
+export const createRelationship = async (relationshipData: CreateRelationshipPayload): Promise<Relationship> => {
   try {
     console.log('[API] Creating relationship:', relationshipData.name);
     const response = await api.post('/relationships', relationshipData);
@@ -111,16 +106,10 @@ export const createRelationship = async (relationshipData: {
   }
 };
 
+// Update updateRelationship to use UpdateRelationshipPayload
 export const updateRelationship = async (
   id: string | number,
-  relationshipData: Partial<{
-    name: string;
-    relationship_type: string;
-    reminder_interval: string;
-    category: string;
-    photo_url?: string;
-    tags?: string[];
-  }>
+  relationshipData: UpdateRelationshipPayload
 ): Promise<void> => {
   try {
     console.log(`[API] Updating relationship ${id}:`, relationshipData);
@@ -178,14 +167,11 @@ export const getRelationshipInteractions = async (relationshipId: string | numbe
   } catch (error) {
     handleApiError(error, `/relationships/${relationshipId}/interactions`);
     return [];
-  }
-};
+  } // <-- Add missing closing brace for catch block
+}; // <-- Add missing closing brace for getRelationshipInteractions function
 
-export const createInteraction = async (interactionData: {
-  relationship_id: string | number;
-  interaction_log: string;
-  tone_tag?: string;
-}): Promise<Interaction> => {
+// Update createInteraction to use CreateInteractionPayload
+export const createInteraction = async (interactionData: CreateInteractionPayload): Promise<Interaction> => {
   try {
     console.log('[API] Creating interaction for relationship:', interactionData.relationship_id);
     const response = await api.post('/interactions', interactionData);
@@ -227,8 +213,8 @@ export const deleteInteraction = async (id: string | number): Promise<void> => {
 };
 
 // Dashboard API
-
-export const getDashboardData = async (): Promise<any[]> => {
+// Update return type for getDashboardData
+export const getDashboardData = async (): Promise<RelationshipDashboardItem[]> => {
   try {
     console.log('[API] Fetching dashboard data');
     const response = await api.get('/dashboard_data');
@@ -241,8 +227,8 @@ export const getDashboardData = async (): Promise<any[]> => {
 };
 
 // Profile View API
-
-export const getRelationshipOverview = async (relationshipId: string | number): Promise<any> => {
+// Update return type for getRelationshipOverview
+export const getRelationshipOverview = async (relationshipId: string | number): Promise<RelationshipOverview> => {
   try {
     console.log(`[API] Fetching overview for relationship: ${relationshipId}`);
     const response = await api.get(`/relationships/${relationshipId}/overview`);

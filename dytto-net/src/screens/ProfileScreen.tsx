@@ -1,85 +1,62 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  Image, 
-  ActivityIndicator, 
-  ScrollView, 
-  TouchableOpacity, 
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+  Alert,
   Animated,
   Dimensions,
-  SafeAreaView
+  FlatList,
+  StatusBar
 } from 'react-native';
-import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../App';
-import { Relationship } from '../types/Relationship';
+// Corrected import name for interaction thread API call
+import { getRelationshipOverview, getRelationshipInteractionsThread, deleteRelationship } from '../services/api';
+import { RelationshipOverview } from '../types/Relationship';
+import { Interaction } from '../types/Interaction';
 import { useTheme } from '../context/ThemeContext';
 import { Theme } from '../types/theme';
-import { 
-  getRelationship, 
-  getRelationshipOverview, 
-  getRelationshipInteractionsThread,
-  getRelationshipQuests
-} from '../services/api';
-import { Interaction } from '../types/Interaction';
-import { Quest } from '../types/Quest';
+// Removed Icon import as it causes errors - can be added back if dependency is fixed
+// import Icon from 'react-native-vector-icons/Ionicons';
 
-// Get screen dimensions for responsive design
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+// Get screen dimensions
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Define navigation props type
+// Define route and navigation props type
+type ProfileScreenRouteProp = RouteProp<RootStackParamList, 'Profile'>;
 type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Profile'>;
 
-// Define route props to receive personId
-type ProfileScreenRouteProp = RouteProp<RootStackParamList, 'Profile'>;
-
 interface Props {
-  navigation: ProfileScreenNavigationProp;
   route: ProfileScreenRouteProp;
+  navigation: ProfileScreenNavigationProp;
 }
 
-// Interface for profile overview data from the API
-interface ProfileOverview {
-  photo_url?: string;
-  name: string;
+// Tab type definition
+type TabType = 'Overview' | 'Thread' | 'Tree' | 'Insights';
+
+// --- Reusable Components ---
+
+// Enhanced XP Bar for Profile Screen
+const ProfileXpBar: React.FC<{
+  currentXp: number;
+  xpInLevel: number;
+  xpForLevel: number;
   level: number;
-  reminder_settings?: string;
-  xp_bar: number;
-  last_interaction?: Interaction;
-  relationship_tags?: string[];
-}
-
-// Function to calculate days since last interaction
-const calculateDaysSince = (isoDateString: string): number => {
-  const lastDate = new Date(isoDateString);
-  const today = new Date();
-  lastDate.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  const diffTime = Math.abs(today.getTime() - lastDate.getTime());
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
-};
-
-// Format days since last interaction in a user-friendly way
-const formatDaysSince = (days: number): string => {
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  return `${days} days ago`;
-};
-
-// Enhanced XP Bar component with animation
-const XpBar: React.FC<{ currentXp: number; level: number; theme: Theme }> = ({ currentXp, level, theme }) => {
+  theme: Theme;
+}> = ({ currentXp, xpInLevel, xpForLevel, level, theme }) => {
   const styles = themedStyles(theme);
-  const xpToNextLevel = 100;
-  const progress = (currentXp % xpToNextLevel) / xpToNextLevel;
-  
-  // Create animated value for progress
+  const progress = xpForLevel > 0 ? xpInLevel / xpForLevel : (level >= 10 ? 1 : 0); // Handle division by zero and max level
+
   const [animation] = useState(new Animated.Value(0));
-  
-  React.useEffect(() => {
-    // Animate the XP bar when it changes
+
+  useEffect(() => {
     Animated.timing(animation, {
       toValue: progress,
       duration: 800,
@@ -88,43 +65,255 @@ const XpBar: React.FC<{ currentXp: number; level: number; theme: Theme }> = ({ c
   }, [progress]);
 
   return (
-    <View style={styles.xpContainer}>
-      <View style={styles.xpLabelContainer}>
-        <Text style={styles.xpLevel}>Level {level}</Text>
-        <Text style={styles.xpText}>{Math.floor(currentXp % xpToNextLevel)}/{xpToNextLevel} XP</Text>
-      </View>
+    <View style={styles.xpBarContainer}>
       <View style={styles.xpBarBackground}>
-        <Animated.View 
+        <Animated.View
           style={[
-            styles.xpBarForeground, 
+            styles.xpBarForeground,
             { width: animation.interpolate({
                 inputRange: [0, 1],
                 outputRange: ['0%', '100%']
-              }) 
+              })
             }
-          ]} 
+          ]}
         />
       </View>
+      <Text style={styles.xpText}>
+        {level >= 10 ? `Level ${level} (Max)` : `${xpInLevel} / ${xpForLevel} XP to Level ${level + 1}`}
+      </Text>
+      <Text style={styles.totalXpText}>Total XP: {currentXp}</Text>
     </View>
   );
 };
 
-// Category tag component
-const CategoryTag: React.FC<{ 
-  label: string; 
-  isPrimary?: boolean;
+// Tab Button Component
+const TabButton: React.FC<{
+  label: TabType;
+  active: boolean;
+  onPress: () => void;
   theme: Theme;
-}> = ({ label, isPrimary, theme }) => {
+}> = ({ label, active, onPress, theme }) => {
   const styles = themedStyles(theme);
-  
+  return (
+    <TouchableOpacity
+      style={[styles.tabButton, active && styles.activeTabButton]}
+      onPress={onPress}
+    >
+      <Text style={[styles.tabButtonText, active && styles.activeTabButtonText]}>
+        {label}
+      </Text>
+      {active && <View style={styles.activeTabIndicator} />}
+    </TouchableOpacity>
+  );
+};
+
+// Category Tag Component (similar to Dashboard)
+const CategoryTag: React.FC<{
+  label: string;
+  theme: Theme;
+  onPress?: () => void;
+}> = ({ label, theme, onPress }) => {
+  const styles = themedStyles(theme);
+  return (
+    <TouchableOpacity
+      style={styles.categoryTag}
+      onPress={onPress}
+      disabled={!onPress}
+    >
+      <Text style={styles.categoryTagText}>{label}</Text>
+    </TouchableOpacity>
+  );
+};
+
+// Interaction Card Component
+const InteractionCard: React.FC<{
+  interaction: Interaction;
+  theme: Theme;
+  expanded?: boolean;
+  onPress?: () => void;
+}> = ({ interaction, theme, expanded = false, onPress }) => {
+  const styles = themedStyles(theme);
+  const interactionDate = new Date(interaction.created_at);
+  const formattedDate = interactionDate.toLocaleDateString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric'
+  });
+  const formattedTime = interactionDate.toLocaleTimeString(undefined, {
+    hour: 'numeric', minute: '2-digit'
+  });
+
+  // Animation for card expansion
+  const [heightAnim] = useState(new Animated.Value(expanded ? 1 : 0));
+
+  useEffect(() => {
+    Animated.timing(heightAnim, {
+      toValue: expanded ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false
+    }).start();
+  }, [expanded]);
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.interactionCard,
+        expanded && styles.interactionCardExpanded
+      ]}
+      onPress={onPress}
+      activeOpacity={0.9}
+    >
+      <View style={styles.interactionCardHeader}>
+        <Text style={styles.interactionDate}>{formattedDate} at {formattedTime}</Text>
+        {interaction.tone_tag && (
+          <View style={[
+            styles.toneTag,
+            { backgroundColor: getToneColor(interaction.tone_tag, theme) + '30' }
+          ]}>
+            <Text style={[
+              styles.toneTagText,
+              { color: getToneColor(interaction.tone_tag, theme) }
+            ]}>{interaction.tone_tag}</Text>
+          </View>
+        )}
+      </View>
+
+      <Text style={styles.interactionLog} numberOfLines={expanded ? undefined : 3}>
+        {interaction.interaction_log}
+      </Text>
+
+      {/* XP Badge */}
+      {interaction.xp_gain !== undefined && (
+        <View style={styles.xpBadge}>
+          <Text style={styles.xpBadgeText}>+{interaction.xp_gain} XP</Text>
+        </View>
+      )}
+
+      {/* AI Insights - only shown when expanded */}
+      <Animated.View style={{
+        opacity: heightAnim,
+        maxHeight: heightAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, 500]
+        }),
+        overflow: 'hidden'
+      }}>
+        {expanded && (
+          <View style={styles.insightsContainer}>
+            {interaction.sentiment_analysis && (
+              <View style={styles.insightItem}>
+                <Text style={styles.insightLabel}>Sentiment:</Text>
+                <Text style={styles.insightValue}>{interaction.sentiment_analysis}</Text>
+              </View>
+            )}
+            {interaction.ai_reasoning && (
+              <View style={styles.insightItem}>
+                <Text style={styles.insightLabel}>AI Analysis:</Text>
+                <Text style={styles.insightValue}>{interaction.ai_reasoning}</Text>
+              </View>
+            )}
+            {interaction.evolution_suggestion && (
+              <View style={styles.insightItem}>
+                <Text style={styles.insightLabel}>Evolution Suggestion:</Text>
+                <Text style={styles.insightValue}>Consider adding '{interaction.evolution_suggestion}'</Text>
+              </View>
+            )}
+            {interaction.interaction_suggestion && (
+              <View style={styles.insightItem}>
+                <Text style={styles.insightLabel}>Next Step:</Text>
+                <Text style={styles.insightValue}>{interaction.interaction_suggestion}</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </Animated.View>
+
+      {/* Expand/collapse indicator */}
+      <View style={styles.expandIndicator}>
+        <Text style={styles.expandIndicatorText}>
+          {expanded ? "Show less" : "Show more"}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// Helper function to get color based on tone
+const getToneColor = (tone: string, theme: Theme): string => {
+  const toneColors: Record<string, string> = {
+    'Happy': theme.colors.success,
+    'Deep': theme.colors.primary,
+    'Draining': theme.colors.error,
+    'Exciting': '#FF9500',
+    'Vulnerable': '#9C27B0',
+    'Casual': '#03A9F4',
+    'Serious': '#607D8B',
+    'Tense': '#FF5722',
+    'Supportive': '#4CAF50'
+  };
+
+  return toneColors[tone] || theme.colors.secondary;
+};
+
+// Quest Card Component
+const QuestCard: React.FC<{
+  title: string;
+  description: string;
+  completed: boolean;
+  theme: Theme;
+  onPress: () => void;
+}> = ({ title, description, completed, theme, onPress }) => {
+  const styles = themedStyles(theme);
+
+  return (
+    <TouchableOpacity
+      style={[styles.questCard, completed && styles.questCardCompleted]}
+      onPress={onPress}
+    >
+      <View style={styles.questStatusIndicator}>
+        <View style={[
+          styles.questStatusDot,
+          completed && styles.questStatusDotCompleted
+        ]} />
+      </View>
+      <View style={styles.questContent}>
+        <Text style={[
+          styles.questTitle,
+          completed && styles.questTitleCompleted
+        ]}>
+          {title}
+        </Text>
+        <Text style={styles.questDescription}>{description}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// Tree Node Component for Tree View
+const TreeNode: React.FC<{
+  label: string;
+  level: number;
+  active: boolean;
+  locked: boolean;
+  theme: Theme;
+}> = ({ label, level, active, locked, theme }) => {
+  const styles = themedStyles(theme);
+
   return (
     <View style={[
-      styles.categoryTag,
-      isPrimary && styles.primaryCategoryTag
+      styles.treeNode,
+      active && styles.treeNodeActive,
+      locked && styles.treeNodeLocked
     ]}>
       <Text style={[
-        styles.categoryTagText,
-        isPrimary && styles.primaryCategoryTagText
+        styles.treeNodeLevel,
+        active && styles.treeNodeLevelActive,
+        locked && styles.treeNodeLevelLocked
+      ]}>
+        Lv.{level}
+      </Text>
+      <Text style={[
+        styles.treeNodeLabel,
+        active && styles.treeNodeLabelActive,
+        locked && styles.treeNodeLabelLocked
       ]}>
         {label}
       </Text>
@@ -132,709 +321,868 @@ const CategoryTag: React.FC<{
   );
 };
 
-// Tab interface
-interface TabData {
-  key: string;
-  title: string;
-}
 
-// Main component
-const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
+// --- Main Profile Screen Component ---
+
+const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
+  const { personId } = route.params;
   const { theme } = useTheme();
   const styles = themedStyles(theme);
-  const { personId } = route.params;
-  
-  const [person, setPerson] = useState<Relationship | null>(null);
+
+  // State
+  const [profileData, setProfileData] = useState<RelationshipOverview | null>(null);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
-  const [quests, setQuests] = useState<Quest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
-  
-  // Animation value for header
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const headerHeight = scrollY.interpolate({
-    inputRange: [0, 100],
-    outputRange: [200, 120],
-    extrapolate: 'clamp'
-  });
-  
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 100],
-    outputRange: [1, 0.8],
-    extrapolate: 'clamp'
-  });
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('Overview');
+  const [expandedInteractionId, setExpandedInteractionId] = useState<number | null>(null);
 
-  // Tabs data
-  const tabs: TabData[] = [
-    { key: 'overview', title: 'Overview' },
-    { key: 'thread', title: 'Thread' },
-    { key: 'quests', title: 'Quests' }
-  ];
+  // Removed animation values (scrollY, headerHeight) as header is now static
 
-  // Use useFocusEffect to reload data when screen comes into focus
+  // Sample quests data (would come from API in real implementation)
+  const [quests] = useState([
+    {
+      id: 1,
+      title: 'Ask about childhood',
+      description: 'Learn about their formative years to deepen your connection',
+      completed: false
+    },
+    {
+      id: 2,
+      title: 'Share a personal belief',
+      description: 'Open up about something meaningful to you',
+      completed: true
+    },
+    {
+      id: 3,
+      title: 'Plan a new activity together',
+      description: 'Try something neither of you have done before',
+      completed: false
+    }
+  ]);
+
+  // Sample tree data (would come from API in real implementation)
+  const [treeData] = useState([
+    { id: 1, label: 'Friend', level: 3, active: true, locked: false },
+    { id: 2, label: 'Business', level: 2, active: true, locked: false },
+    { id: 3, label: 'Mentor', level: 1, active: false, locked: true },
+    { id: 4, label: 'Creative Partner', level: 1, active: false, locked: true }
+  ]);
+
+  // Sample insights data (would come from API in real implementation)
+  const [insights] = useState([
+    {
+      id: 1,
+      title: 'Conversation Patterns',
+      description: 'Your conversations tend to be deep and meaningful, often focusing on personal growth.',
+      icon: '📊'
+    },
+    {
+      id: 2,
+      title: 'Emotional Impact',
+      description: 'This relationship has a positive impact on your mood, with 80% of interactions rated as energizing.',
+      icon: '😊'
+    },
+    {
+      id: 3,
+      title: 'Growth Opportunity',
+      description: 'Consider sharing more vulnerable topics to deepen your connection further.',
+      icon: '🌱'
+    }
+  ]);
+
+  const fetchData = useCallback(async (isRefreshing = false) => {
+    if (isRefreshing) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
+
+    try {
+      // Fetch overview and interactions concurrently
+      const [overviewResult, interactionsResult] = await Promise.all([
+        getRelationshipOverview(Number(personId)),
+        getRelationshipInteractionsThread(Number(personId)) // Corrected function name
+      ]);
+
+      // Check for errors in results (assuming API functions throw or return error indicators)
+      // This part depends on how your api.ts handles errors. Adjust as needed.
+      if (!overviewResult) { // Simple check, adjust based on actual API function behavior
+         throw new Error("Failed to load profile overview.");
+      }
+       if (!interactionsResult) { // Simple check
+         throw new Error("Failed to load interaction thread.");
+       }
+
+
+      setProfileData(overviewResult);
+      setInteractions(interactionsResult || []); // Handle case where thread might be empty but not an error
+
+    } catch (err) {
+      console.error("[API] Error fetching profile data:", err);
+      setError(err instanceof Error ? err.message : "An unknown error occurred.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [personId]); // Dependency on personId
+
+  // useFocusEffect to refresh data when the screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      const loadData = async () => {
-        setLoading(true);
-        try {
-          // Fetch relationship overview data from the API
-          const overview = await getRelationshipOverview(personId);
-          
-          // Convert API data to our Relationship format
-          const relationshipData: Relationship = {
-            id: personId,
-            name: overview.name,
-            photo_url: overview.photo_url,
-            photo: overview.photo_url, // For backward compatibility
-            level: overview.level || 1,
-            xp: overview.xp_bar || 0,
-            category: overview.relationship_tags?.[0] || 'Friend', // Use first tag as primary category
-            relationship_type: '', // Not provided in overview
-            reminder_interval: overview.reminder_settings || '',
-            reminderInterval: overview.reminder_settings, // For backward compatibility
-            categories: overview.relationship_tags || [], // Use tags as categories
-            daysSinceLastInteraction: overview.last_interaction ? 
-              calculateDaysSince(overview.last_interaction.created_at) : 0
-          };
-          
-          setPerson(relationshipData);
-          
-          // Fetch interactions thread
-          const interactionsData = await getRelationshipInteractionsThread(personId);
-          setInteractions(interactionsData);
-          
-          // Fetch quests
-          try {
-            const questsData = await getRelationshipQuests(personId);
-            setQuests(questsData);
-          } catch (error) {
-            console.log('Quests not available yet:', error);
-            setQuests([]);
-          }
-          
-          // Update navigation options with themed styles
-          navigation.setOptions({
-            title: relationshipData.name,
-            headerStyle: { backgroundColor: theme.colors.background },
-            headerTintColor: theme.colors.text,
-            headerTitleStyle: { color: theme.colors.text }
-          });
-        } catch (error) {
-          console.error('Error loading relationship data:', error);
-        } finally {
-          setLoading(false);
-        }
-      };
-      
-      loadData();
-      
-      // Return a cleanup function (optional)
-      return () => {
-        // Any cleanup code here
-      };
-    }, [personId, navigation, theme])
+      fetchData();
+    }, [fetchData])
   );
 
-  if (loading) {
+  const onRefresh = () => {
+    fetchData(true);
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      "Delete Relationship",
+      `Are you sure you want to delete your connection with ${profileData?.name}? This action cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteRelationship(Number(personId));
+              Alert.alert("Success", `${profileData?.name} has been deleted.`);
+              navigation.goBack(); // Or navigate to Dashboard
+            } catch (err) {
+              Alert.alert("Error", `Failed to delete relationship: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const toggleInteractionExpand = (id: number) => {
+    setExpandedInteractionId(expandedInteractionId === id ? null : id);
+  };
+
+  const handleQuestToggle = (id: number) => {
+    // In a real implementation, this would update the quest status via API
+    Alert.alert(
+      "Quest Status",
+      "Would you like to mark this quest as completed?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Yes",
+          onPress: () => {
+            // Update quest status logic would go here
+            Alert.alert("Success", "Quest status updated!");
+          }
+        }
+      ]
+    );
+  };
+
+  // --- Render Logic ---
+
+  if (loading && !refreshing) {
     return (
       <View style={[styles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={styles.loadingText}>Loading profile...</Text>
       </View>
     );
   }
 
-  if (!person) {
+  if (error && !refreshing) {
     return (
       <View style={[styles.container, styles.centerContent]}>
-        <Text style={styles.errorTitle}>Error</Text>
-        <Text style={styles.errorText}>Could not load profile information.</Text>
-        <TouchableOpacity 
-          style={styles.retryButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.retryButtonText}>Go Back</Text>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => fetchData()}>
+          <Text style={styles.retryButtonText}>Retry</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // Render the overview tab content
-  const renderOverviewTab = () => (
-    <View style={styles.tabContent}>
-      <View style={styles.detailsSection}>
-        <Text style={styles.sectionTitle}>Relationship Details</Text>
-        
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Last Interaction:</Text>
-          <Text style={styles.detailValue}>
-            {formatDaysSince(person.daysSinceLastInteraction || 0)}
-          </Text>
-        </View>
-        
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Reminder:</Text>
-          <Text style={styles.detailValue}>{person.reminderInterval || 'Not set'}</Text>
-        </View>
-        
-        <Text style={styles.categoriesLabel}>Categories:</Text>
-        <View style={styles.categoriesContainer}>
-          {person.categories && person.categories.map((category, index) => (
-            <CategoryTag 
-              key={index} 
-              label={category} 
-              isPrimary={category === person.category}
-              theme={theme} 
-            />
-          ))}
-        </View>
+  if (!profileData) {
+    // This case might occur briefly or if fetch fails silently
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Text style={styles.errorText}>Could not load profile data.</Text>
       </View>
-      
-      <View style={styles.statsSection}>
-        <Text style={styles.sectionTitle}>Relationship Stats</Text>
-        
-        <View style={styles.statsGrid}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{person.level}</Text>
-            <Text style={styles.statLabel}>Level</Text>
-          </View>
-          
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{interactions.length}</Text>
-            <Text style={styles.statLabel}>Interactions</Text>
-          </View>
-          
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{quests.filter(q => q.quest_status === 'completed').length}</Text>
-            <Text style={styles.statLabel}>Quests</Text>
-          </View>
-        </View>
-      </View>
-    </View>
-  );
+    );
+  }
 
-  // Render the thread tab content
-  const renderThreadTab = () => (
-    <View style={styles.tabContent}>
-      {interactions.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyStateTitle}>No interactions yet</Text>
-          <Text style={styles.emptyStateText}>
-            Start building your relationship by logging your first interaction.
-          </Text>
-        </View>
-      ) : (
-        interactions.map((interaction, index) => (
-          <View key={index} style={styles.interactionItem}>
-            <View style={styles.interactionHeader}>
-              <Text style={styles.interactionDate}>
-                {new Date(interaction.created_at).toLocaleDateString()}
-              </Text>
-              {interaction.tone_tag && (
-                <View style={styles.toneTag}>
-                  <Text style={styles.toneTagText}>{interaction.tone_tag}</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.interactionText}>{interaction.interaction_log}</Text>
-            {interaction.sentiment_analysis && (
-              <View style={styles.sentimentContainer}>
-                <Text style={styles.sentimentLabel}>AI Analysis:</Text>
-                <Text style={styles.sentimentText}>{interaction.sentiment_analysis}</Text>
-              </View>
-            )}
-          </View>
-        ))
-      )}
-    </View>
-  );
-
-  // Render the quests tab content
-  const renderQuestsTab = () => (
-    <View style={styles.tabContent}>
-      {quests.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyStateTitle}>No quests available</Text>
-          <Text style={styles.emptyStateText}>
-            Quests will appear here as your relationship grows.
-          </Text>
-        </View>
-      ) : (
-        quests.map((quest, index) => (
-          <View 
-            key={index} 
-            style={[
-              styles.questItem,
-              quest.quest_status === 'completed' && styles.questItemCompleted
-            ]}
-          >
-            <View style={styles.questContent}>
-              <Text style={styles.questDescription}>{quest.quest_description}</Text>
-              <Text style={styles.questStatus}>{quest.quest_status}</Text>
-            </View>
-            {quest.quest_status !== 'completed' && (
-              <TouchableOpacity 
-                style={styles.completeQuestButton}
-                onPress={() => {
-                  // This would be implemented to mark a quest as complete
-                  console.log('Complete quest:', quest.id);
-                }}
-              >
-                <Text style={styles.completeQuestButtonText}>Complete</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        ))
-      )}
-    </View>
-  );
-
-  // Render the active tab content
+  // Render tab content based on active tab
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'overview':
-        return renderOverviewTab();
-      case 'thread':
-        return renderThreadTab();
-      case 'quests':
-        return renderQuestsTab();
+      case 'Overview':
+        return (
+          <>
+            {/* Details Section */}
+            <View style={styles.detailsSection}>
+              <Text style={styles.sectionTitle}>Details</Text>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailText}>
+                  Last interaction: {profileData.last_interaction ? new Date(profileData.last_interaction.created_at).toLocaleDateString() : 'Never'}
+                </Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailText}>Reminder: {profileData.reminder_settings || 'Not set'}</Text>
+              </View>
+            </View>
+
+            {/* Quests Section */}
+            <View style={styles.questsSection}>
+              <Text style={styles.sectionTitle}>Relationship Quests</Text>
+              {quests.map(quest => (
+                <QuestCard
+                  key={quest.id}
+                  title={quest.title}
+                  description={quest.description}
+                  completed={quest.completed}
+                  theme={theme}
+                  onPress={() => handleQuestToggle(quest.id)}
+                />
+              ))}
+            </View>
+
+            {/* Recent Interactions Preview */}
+            <View style={styles.interactionsSection}>
+              <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.sm}}>
+                <Text style={styles.sectionTitle}>Recent Interactions</Text>
+                <TouchableOpacity onPress={() => setActiveTab('Thread')}>
+                  <Text style={{color: theme.colors.primary, fontSize: 14}}>See all</Text>
+                </TouchableOpacity>
+              </View>
+
+              {interactions.length > 0 ? (
+                interactions.slice(0, 2).map(interaction => (
+                  <InteractionCard
+                    key={interaction.id}
+                    interaction={interaction}
+                    theme={theme}
+                    onPress={() => toggleInteractionExpand(interaction.id)}
+                    expanded={expandedInteractionId === interaction.id}
+                  />
+                ))
+              ) : (
+                <Text style={styles.noInteractionsText}>No interactions logged yet.</Text>
+              )}
+            </View>
+          </>
+        );
+
+      case 'Thread':
+        return (
+          <View style={styles.interactionsSection}>
+            <Text style={styles.sectionTitle}>Interaction History</Text>
+            {interactions.length > 0 ? (
+              interactions.map(interaction => (
+                <InteractionCard
+                  key={interaction.id}
+                  interaction={interaction}
+                  theme={theme}
+                  onPress={() => toggleInteractionExpand(interaction.id)}
+                  expanded={expandedInteractionId === interaction.id}
+                />
+              ))
+            ) : (
+              <Text style={styles.noInteractionsText}>No interactions logged yet.</Text>
+            )}
+          </View>
+        );
+
+      case 'Tree':
+        return (
+          <View style={styles.treeViewSection}>
+            <Text style={styles.sectionTitle}>Relationship Categories</Text>
+            <Text style={{color: theme.colors.textSecondary, marginBottom: theme.spacing.md}}>
+              Categories evolve as your relationship grows. Unlock new branches by logging meaningful interactions.
+            </Text>
+
+            <View style={styles.treeContainer}>
+              {treeData.map(node => (
+                <TreeNode
+                  key={node.id}
+                  label={node.label}
+                  level={node.level}
+                  active={node.active}
+                  locked={node.locked}
+                  theme={theme}
+                />
+              ))}
+            </View>
+          </View>
+        );
+
+      case 'Insights':
+        return (
+          <View style={styles.insightsSection}>
+            <Text style={styles.sectionTitle}>AI Relationship Insights</Text>
+            <Text style={{color: theme.colors.textSecondary, marginBottom: theme.spacing.md}}>
+              Patterns and suggestions based on your interaction history.
+            </Text>
+
+            {insights.map(insight => (
+              <View key={insight.id} style={styles.insightCard}>
+                <View style={styles.insightHeader}>
+                  <Text style={styles.insightIcon}>{insight.icon}</Text>
+                  <Text style={styles.insightTitle}>{insight.title}</Text>
+                </View>
+                <Text style={styles.insightDescription}>{insight.description}</Text>
+              </View>
+            ))}
+          </View>
+        );
+
       default:
-        return renderOverviewTab();
+        return null;
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Animated.View 
-        style={[
-          styles.header, 
-          { 
-            height: headerHeight,
-            opacity: headerOpacity
-          }
-        ]}
-      >
-        <View style={styles.profilePicContainer}>
-          {person.photo_url ? (
-            <Image source={{ uri: person.photo_url }} style={styles.profilePic} />
-          ) : (
-            <Text style={styles.profilePicInitial}>{person.name.charAt(0).toUpperCase()}</Text>
-          )}
-        </View>
-        <Text style={styles.name}>{person.name}</Text>
-        <XpBar currentXp={person.xp || 0} level={person.level || 1} theme={theme} />
-      </Animated.View>
+    <View style={styles.container}>
+      <StatusBar backgroundColor={theme.colors.surface} barStyle={theme.isDark ? 'light-content' : 'dark-content'} />
 
+      {/* Header Section - Changed back to regular View, removed animated height */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          {profileData.photo_url ? (
+            <Image source={{ uri: profileData.photo_url }} style={styles.profilePhoto} />
+          ) : (
+            <View style={[styles.profilePhoto, styles.profileInitialContainer]}>
+              <Text style={styles.profileInitial}>{profileData.name.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+          <Text style={styles.profileName}>{profileData.name}</Text>
+          <Text style={styles.levelText}>Level {profileData.level}</Text>
+
+          {/* Categories */}
+          <View style={styles.categoriesContainer}>
+            {profileData.categories.map((category, index) => (
+              <CategoryTag key={index} label={category} theme={theme} />
+            ))}
+          </View>
+        </View>
+        {/* XP Bar removed from here */}
+      </View>
+
+      {/* XP Bar - Moved outside the animated header AND ScrollView */}
+      <View style={styles.xpBarWrapper}>
+        <ProfileXpBar
+          currentXp={profileData.total_xp}
+          xpInLevel={profileData.xp_earned_in_level}
+          xpForLevel={profileData.xp_needed_for_level}
+          level={profileData.level}
+          theme={theme}
+        />
+      </View>
+
+      {/* Tab Navigation - Outside ScrollView */}
       <View style={styles.tabsContainer}>
-        {tabs.map((tab) => (
-          <TouchableOpacity
-            key={tab.key}
-            style={[
-              styles.tabButton,
-              activeTab === tab.key && styles.activeTabButton
-            ]}
-            onPress={() => setActiveTab(tab.key)}
-          >
-            <Text 
-              style={[
-                styles.tabButtonText,
-                activeTab === tab.key && styles.activeTabButtonText
-              ]}
-            >
-              {tab.title}
-            </Text>
-          </TouchableOpacity>
+        {(['Overview', 'Thread', 'Tree', 'Insights'] as TabType[]).map(tab => (
+          <TabButton
+            key={tab}
+            label={tab}
+            active={activeTab === tab}
+            onPress={() => setActiveTab(tab)}
+            theme={theme}
+          />
         ))}
       </View>
 
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollViewContent}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
-        )}
-        scrollEventThrottle={16}
-      >
-        {renderTabContent()}
-      </ScrollView>
-
+      {/* Action Buttons - Outside ScrollView */}
       <View style={styles.actionsContainer}>
-        <TouchableOpacity 
-          style={styles.logButton}
-          onPress={() => navigation.navigate('LogInteraction', { 
-            personId: String(person.id), 
-            personName: person.name 
-          })}
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => navigation.navigate('LogInteraction', { personId: String(personId), personName: profileData.name })}
         >
-          <Text style={styles.logButtonText}>Log Interaction</Text>
+          <Text style={styles.actionButtonText}>+ Log Interaction</Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+
+      {/* Scrollable Content Area */}
+      <ScrollView
+        refreshControl={ // Keep refresh control if desired for the content area
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary}/>
+        }
+        contentContainerStyle={styles.scrollContentContainer} // Keep padding for content
+      >
+        {/* Tab Content */}
+        {renderTabContent()}
+
+        {/* Delete Button Section */}
+        <View style={styles.deleteSection}>
+          <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+            <Text style={styles.deleteButtonText}>Delete Relationship</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
   );
 };
 
-// Function to generate themed styles
+// --- Styles ---
 const themedStyles = (theme: Theme) => StyleSheet.create({
-  // Container styles
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  scrollContentContainer: {
+    paddingBottom: theme.spacing.xl,
   },
   centerContent: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollViewContent: {
-    paddingBottom: 100,
-  },
-  
-  // Header styles
   header: {
-    alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: theme.colors.surface,
-    paddingTop: theme.spacing.lg,
-    paddingBottom: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    padding: theme.spacing.lg, // Use lg padding for all sides, including bottom
+    // Removed paddingBottom override
+    alignItems: 'center',
+    // No border/margin needed here now
   },
-  profilePicContainer: {
+  headerContent: {
+     alignItems: 'center',
+     // Removed marginBottom as XP bar is no longer directly below
+  },
+  profilePhoto: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: theme.colors.secondary,
-    justifyContent: 'center',
-    alignItems: 'center',
     marginBottom: theme.spacing.md,
-    borderWidth: 3,
-    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.secondary, // Fallback bg
   },
-  profilePic: {
-    width: 94,
-    height: 94,
-    borderRadius: 47,
+  profileInitialContainer: {
+     justifyContent: 'center',
+     alignItems: 'center',
   },
-  profilePicInitial: {
-    fontSize: 40,
-    color: theme.colors.background,
-    fontWeight: 'bold',
+  profileInitial: {
+     fontSize: 40,
+     fontWeight: 'bold',
+     color: theme.colors.background,
   },
-  name: {
+  profileName: {
     fontSize: theme.typography.h2.fontSize,
     fontWeight: theme.typography.h2.fontWeight,
     color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
+    marginBottom: theme.spacing.xs,
   },
-  
-  // XP Bar styles
-  xpContainer: {
-    width: '80%',
-    marginBottom: theme.spacing.sm,
-  },
-  xpLabelContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  xpLevel: {
-    fontSize: theme.typography.caption.fontSize,
-    fontWeight: '600',
+  levelText: {
+    fontSize: theme.typography.h4.fontSize,
     color: theme.colors.primary,
+    fontWeight: '600',
+    
   },
-  xpText: {
-    fontSize: theme.typography.caption.fontSize,
+  categoriesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center', // Center tags
+    marginBottom: theme.spacing.sm, // Add space below tags
+  },
+  categoryTag: {
+    backgroundColor: theme.colors.border,
+    paddingVertical: 3,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: 12, // More rounded
+    margin: theme.spacing.xs / 2,
+  },
+  categoryTagText: {
     color: theme.colors.textSecondary,
+    fontSize: 12,
+  },
+  xpBarContainer: {
+    width: '100%', // Take full width of header padding
+    alignItems: 'center',
   },
   xpBarBackground: {
     height: 8,
-    width: '100%',
     backgroundColor: theme.colors.border,
     borderRadius: 4,
     overflow: 'hidden',
+    width: '90%', // Make bar slightly narrower than container
+    marginBottom: theme.spacing.xs / 2,
   },
   xpBarForeground: {
     height: '100%',
     backgroundColor: theme.colors.primary,
     borderRadius: 4,
   },
-  
-  // Tabs styles
+  xpText: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    marginTop: 2,
+  },
+  totalXpText: {
+     fontSize: 10,
+     color: theme.colors.textSecondary,
+     marginTop: 2,
+  },
+  // Tab navigation styles
   tabsContainer: {
     flexDirection: 'row',
     backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+    // Removed marginBottom as Action Buttons follow directly
   },
   tabButton: {
     flex: 1,
     paddingVertical: theme.spacing.sm,
     alignItems: 'center',
+    position: 'relative',
   },
   activeTabButton: {
-    borderBottomWidth: 2,
-    borderBottomColor: theme.colors.primary,
+    backgroundColor: theme.colors.surface,
   },
   tabButtonText: {
     color: theme.colors.textSecondary,
-    fontSize: theme.typography.body.fontSize,
+    fontSize: 14,
+    fontWeight: '500',
   },
   activeTabButtonText: {
     color: theme.colors.primary,
     fontWeight: '600',
   },
-  tabContent: {
-    padding: theme.spacing.md,
+  activeTabIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: '25%',
+    right: '25%',
+    height: 3,
+    backgroundColor: theme.colors.primary,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
   },
-  
-  // Details section styles
+  actionsContainer: {
+     flexDirection: 'row',
+     justifyContent: 'space-around', // Space out buttons
+     paddingHorizontal: theme.spacing.lg,
+     paddingVertical: theme.spacing.sm,
+     borderBottomWidth: 1,
+     borderBottomColor: theme.colors.border,
+     backgroundColor: theme.colors.surface,
+     marginBottom: theme.spacing.md, // Add margin below actions before scroll content starts
+  },
+  actionButton: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     padding: theme.spacing.sm,
+  },
+  actionButtonText: {
+     color: theme.colors.primary,
+     marginLeft: theme.spacing.xs,
+     fontSize: 14,
+     fontWeight: '500',
+  },
   detailsSection: {
-    backgroundColor: theme.colors.surface,
-    padding: theme.spacing.md,
-    borderRadius: 8,
-    marginBottom: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.lg,
   },
   sectionTitle: {
     fontSize: theme.typography.h4.fontSize,
     fontWeight: theme.typography.h4.fontWeight,
     color: theme.colors.text,
     marginBottom: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    paddingBottom: theme.spacing.xs,
   },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.sm,
+  detailItem: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     marginBottom: theme.spacing.sm,
   },
-  detailLabel: {
-    fontSize: theme.typography.body.fontSize,
-    color: theme.colors.textSecondary,
-    flex: 1,
+  detailIcon: {
+     marginRight: theme.spacing.sm,
   },
-  detailValue: {
-    fontSize: theme.typography.body.fontSize,
-    color: theme.colors.text,
-    flex: 2,
-    textAlign: 'right',
+  detailText: {
+     fontSize: theme.typography.body.fontSize,
+     color: theme.colors.text,
   },
-  categoriesLabel: {
-    fontSize: theme.typography.body.fontSize,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.xs,
+  interactionsSection: {
+    paddingHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.lg,
   },
-  categoriesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  categoryTag: {
-    backgroundColor: theme.colors.border,
-    paddingVertical: 4,
-    paddingHorizontal: theme.spacing.sm,
-    borderRadius: 4,
-    marginRight: theme.spacing.xs,
-    marginBottom: theme.spacing.xs,
-  },
-  primaryCategoryTag: {
-    backgroundColor: theme.colors.primary + '30',
-  },
-  categoryTagText: {
-    color: theme.colors.textSecondary,
-    fontSize: 12,
-  },
-  primaryCategoryTagText: {
-    color: theme.colors.primary,
-    fontWeight: '500',
-  },
-  
-  // Stats section styles
-  statsSection: {
+  interactionCard: {
     backgroundColor: theme.colors.surface,
     padding: theme.spacing.md,
     borderRadius: 8,
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: theme.isDark ? 0.3 : 0.08,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  statsGrid: {
+  interactionCardExpanded: {
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.primary,
+  },
+  interactionCardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  statItem: {
+    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: theme.spacing.sm,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: theme.colors.primary,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: theme.typography.caption.fontSize,
-    color: theme.colors.textSecondary,
-  },
-  
-  // Interaction thread styles
-  interactionItem: {
-    backgroundColor: theme.colors.surface,
-    padding: theme.spacing.md,
-    borderRadius: 8,
-    marginBottom: theme.spacing.md,
-  },
-  interactionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.sm,
+    marginBottom: theme.spacing.xs,
   },
   interactionDate: {
-    fontSize: theme.typography.caption.fontSize,
+    fontSize: 12,
     color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs,
   },
-  toneTag: {
-    backgroundColor: theme.colors.primary + '20',
-    paddingVertical: 2,
-    paddingHorizontal: theme.spacing.sm,
-    borderRadius: 4,
-  },
-  toneTagText: {
-    fontSize: 10,
-    color: theme.colors.primary,
-  },
-  interactionText: {
+  interactionLog: {
     fontSize: theme.typography.body.fontSize,
     color: theme.colors.text,
     marginBottom: theme.spacing.sm,
   },
-  sentimentContainer: {
+  toneTag: {
+     backgroundColor: theme.colors.secondary + '30', // Example styling
+     paddingVertical: 2,
+     paddingHorizontal: 6,
+     borderRadius: 4,
+     alignSelf: 'flex-start', // Don't take full width
+     marginBottom: theme.spacing.xs,
+  },
+  toneTagText: {
+     color: theme.colors.secondary, // Example styling
+     fontSize: 11,
+     fontWeight: '500',
+  },
+  xpBadge: {
+    backgroundColor: theme.colors.success + '20',
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: theme.spacing.xs,
+  },
+  xpBadgeText: {
+    color: theme.colors.success,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  insightsContainer: {
     backgroundColor: theme.colors.background,
     padding: theme.spacing.sm,
-    borderRadius: 4,
+    borderRadius: 6,
     marginTop: theme.spacing.xs,
+    marginBottom: theme.spacing.sm,
   },
-  sentimentLabel: {
+  insightItem: {
+    marginBottom: theme.spacing.xs,
+  },
+  insightLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: theme.colors.textSecondary,
     marginBottom: 2,
   },
-  sentimentText: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-    fontStyle: 'italic',
+  insightValue: {
+    fontSize: 14,
+    color: theme.colors.text,
   },
-  
-  // Quest styles
-  questItem: {
-    backgroundColor: theme.colors.surface,
-    padding: theme.spacing.md,
-    borderRadius: 8,
-    marginBottom: theme.spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  expandIndicator: {
     alignItems: 'center',
-    borderLeftWidth: 3,
-    borderLeftColor: theme.colors.warning,
+    marginTop: theme.spacing.xs,
   },
-  questItemCompleted: {
-    borderLeftColor: theme.colors.success,
-    opacity: 0.8,
+  expandIndicatorText: {
+    fontSize: 12,
+    color: theme.colors.primary,
+    fontWeight: '500',
+  },
+  aiInsightText: {
+     fontSize: 12,
+     color: theme.colors.textSecondary,
+     marginTop: theme.spacing.sm,
+     fontStyle: 'italic',
+  },
+  noInteractionsText: {
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    marginTop: theme.spacing.md,
+  },
+  // Quest styles
+  questsSection: {
+    paddingHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.lg,
+  },
+  questCard: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.surface,
+    padding: theme.spacing.sm,
+    borderRadius: 8,
+    marginBottom: theme.spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: theme.isDark ? 0.2 : 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  questCardCompleted: {
+    opacity: 0.7,
+  },
+  questStatusIndicator: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: theme.spacing.sm,
+  },
+  questStatusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+  },
+  questStatusDotCompleted: {
+    backgroundColor: theme.colors.primary,
   },
   questContent: {
     flex: 1,
   },
+  questTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginBottom: 2,
+  },
+  questTitleCompleted: {
+    textDecorationLine: 'line-through',
+    color: theme.colors.textSecondary,
+  },
   questDescription: {
-    fontSize: theme.typography.body.fontSize,
-    color: theme.colors.text,
-    marginBottom: 4,
-  },
-  questStatus: {
-    fontSize: theme.typography.caption.fontSize,
-    color: theme.colors.textSecondary,
-    textTransform: 'capitalize',
-  },
-  completeQuestButton: {
-    backgroundColor: theme.colors.success + '30',
-    paddingVertical: theme.spacing.xs,
-    paddingHorizontal: theme.spacing.sm,
-    borderRadius: 4,
-    marginLeft: theme.spacing.sm,
-  },
-  completeQuestButtonText: {
-    color: theme.colors.success,
     fontSize: 12,
-    fontWeight: '600',
-  },
-  
-  // Empty state styles
-  emptyState: {
-    alignItems: 'center',
-    padding: theme.spacing.lg,
-    backgroundColor: theme.colors.surface,
-    borderRadius: 8,
-  },
-  emptyStateTitle: {
-    fontSize: theme.typography.h4.fontSize,
-    fontWeight: theme.typography.h4.fontWeight,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
-  },
-  emptyStateText: {
-    fontSize: theme.typography.body.fontSize,
     color: theme.colors.textSecondary,
-    textAlign: 'center',
   },
-  
-  // Action button styles
-  actionsContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: theme.spacing.md,
-    backgroundColor: theme.colors.background,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+  // Tree view styles
+  treeViewSection: {
+    paddingHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.lg,
   },
-  logButton: {
-    backgroundColor: theme.colors.primary,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  logButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  
-  // Loading and error states
-  loadingText: {
-    color: theme.colors.textSecondary,
+  treeContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     marginTop: theme.spacing.sm,
   },
-  errorTitle: {
-    fontSize: theme.typography.h3.fontSize,
-    fontWeight: theme.typography.h3.fontWeight,
-    color: theme.colors.error,
+  treeNode: {
+    width: '48%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: 8,
+    padding: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: theme.isDark ? 0.2 : 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  treeNodeActive: {
+    borderLeftColor: theme.colors.primary,
+  },
+  treeNodeLocked: {
+    opacity: 0.5,
+    borderLeftColor: theme.colors.border,
+  },
+  treeNodeLevel: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    marginBottom: 2,
+  },
+  treeNodeLevelActive: {
+    color: theme.colors.primary,
+    fontWeight: '600',
+  },
+  treeNodeLevelLocked: {
+    color: theme.colors.textSecondary,
+  },
+  treeNodeLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  treeNodeLabelActive: {
+    color: theme.colors.text,
+  },
+  treeNodeLabelLocked: {
+    color: theme.colors.textSecondary,
+  },
+  // Insights styles
+  insightsSection: {
+    paddingHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.lg,
+  },
+  insightCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 8,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: theme.isDark ? 0.2 : 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  insightHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: theme.spacing.sm,
   },
+  insightIcon: {
+    fontSize: 24,
+    marginRight: theme.spacing.sm,
+  },
+  insightTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  insightDescription: {
+    fontSize: 14,
+    color: theme.colors.text,
+    lineHeight: 20,
+  },
+  deleteSection: {
+     paddingHorizontal: theme.spacing.lg,
+     marginTop: theme.spacing.lg,
+     borderTopWidth: 1,
+     borderTopColor: theme.colors.border,
+     paddingTop: theme.spacing.lg,
+  },
+  deleteButton: {
+     backgroundColor: theme.colors.error + '20', // Light error bg
+     paddingVertical: theme.spacing.sm,
+     borderRadius: 8,
+     alignItems: 'center',
+  },
+  deleteButtonText: {
+     color: theme.colors.error,
+     fontWeight: '600',
+  },
   errorText: {
-    color: theme.colors.textSecondary,
-    fontSize: theme.typography.body.fontSize,
-    marginBottom: theme.spacing.lg,
+    color: theme.colors.error,
     textAlign: 'center',
+    margin: theme.spacing.lg,
   },
   retryButton: {
     backgroundColor: theme.colors.primary,
-    paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.lg,
-    borderRadius: 8,
+    padding: theme.spacing.sm,
+    borderRadius: 5,
+    alignSelf: 'center',
   },
   retryButtonText: {
     color: '#fff',
-    fontWeight: '600',
+  },
+  xpBarWrapper: { // Style for the container holding the moved XP bar
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: theme.spacing.md, // Add some space below the bar
+    backgroundColor: theme.colors.surface, // Match header background
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    // Removed marginBottom as it's now part of the fixed section
   },
 });
 

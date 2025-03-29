@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  FlatList, 
-  StyleSheet, 
-  Image, 
-  TouchableOpacity, 
-  ActivityIndicator, 
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  ActivityIndicator,
   RefreshControl,
   Animated,
   Dimensions,
   SafeAreaView
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Relationship } from '../types/Relationship';
+// Use the specific dashboard item type and Relationship for payload types if needed elsewhere
+import { RelationshipDashboardItem, Relationship } from '../types/Relationship';
 import { RootStackParamList } from '../../App';
 import { useTheme } from '../context/ThemeContext';
 import { Theme } from '../types/theme';
@@ -29,15 +30,17 @@ interface Props {
   navigation: DashboardScreenNavigationProp;
 }
 
-// Enhanced XP Bar component with animation
-const MiniXpBar: React.FC<{ currentXp?: number; level: number; theme: Theme }> = ({ currentXp = 0, level, theme }) => {
+// Enhanced XP Bar component with animation - Note: Dashboard data doesn't include raw XP, only level.
+// This might need adjustment or removal from dashboard card if XP bar isn't shown here.
+// For now, keeping structure but using level as placeholder.
+const MiniXpBar: React.FC<{ level: number; theme: Theme }> = ({ level, theme }) => {
   const styles = themedStyles(theme);
-  const xpToNextLevel = 100;
-  const progress = (currentXp % xpToNextLevel) / xpToNextLevel;
-  
+  // Placeholder logic as dashboard doesn't have detailed XP
+  const progress = (level / 10); // Simple progress based on level
+
   // Create animated value for progress
   const [animation] = useState(new Animated.Value(0));
-  
+
   useEffect(() => {
     // Animate the XP bar when it changes
     Animated.timing(animation, {
@@ -46,44 +49,45 @@ const MiniXpBar: React.FC<{ currentXp?: number; level: number; theme: Theme }> =
       useNativeDriver: false
     }).start();
   }, [progress]);
-  
+
   return (
     <View style={styles.miniXpBarContainer}>
       <View style={styles.miniXpBarBackground}>
-        <Animated.View 
+        <Animated.View
           style={[
-            styles.miniXpBarForeground, 
+            styles.miniXpBarForeground,
             { width: animation.interpolate({
                 inputRange: [0, 1],
                 outputRange: ['0%', '100%']
-              }) 
+              })
             }
-          ]} 
+          ]}
         />
       </View>
-      <Text style={styles.xpText}>{`${Math.floor(currentXp % xpToNextLevel)}/${xpToNextLevel} XP`}</Text>
+      {/* Removed XP text as raw XP isn't available here */}
+      {/* <Text style={styles.xpText}>{`${Math.floor(currentXp % xpToNextLevel)}/${xpToNextLevel} XP`}</Text> */}
     </View>
   );
 };
 
 // Relationship category tag component
-const CategoryTag: React.FC<{ 
-  label: string; 
-  isOverdue?: boolean; 
+const CategoryTag: React.FC<{
+  label: string;
+  isOverdue?: boolean;
   theme: Theme;
-  isPrimary?: boolean;
-}> = ({ label, isOverdue, theme, isPrimary }) => {
+  // isPrimary?: boolean; // Primary logic might change based on multiple categories
+}> = ({ label, isOverdue, theme }) => {
   const styles = themedStyles(theme);
-  
+
   return (
     <View style={[
       styles.categoryTag,
-      isPrimary && styles.primaryCategoryTag,
+      // isPrimary && styles.primaryCategoryTag, // Revisit primary styling if needed
       isOverdue && styles.categoryTagOverdue
     ]}>
       <Text style={[
         styles.categoryTagText,
-        isPrimary && styles.primaryCategoryTagText,
+        // isPrimary && styles.primaryCategoryTagText, // Revisit primary styling if needed
         isOverdue && styles.categoryTagTextOverdue
       ]}>
         {label}
@@ -93,28 +97,24 @@ const CategoryTag: React.FC<{
 };
 
 // Helper functions
-const calculateDaysSince = (isoDateString: string): number => {
-  const lastDate = new Date(isoDateString);
-  const today = new Date();
-  lastDate.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  const diffTime = Math.abs(today.getTime() - lastDate.getTime());
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-};
+// Removed calculateDaysSince as backend provides it
 
-const isOverdue = (daysSince: number, interval?: Relationship['reminderInterval'] | Relationship['reminder_interval']): boolean => {
-  if (!interval) return false;
+// Updated isOverdue to use direct days_since_interaction and correct interval field
+const isOverdue = (daysSince: number | "Never", interval?: string): boolean => {
+  if (daysSince === "Never" || !interval) return false;
   switch (interval) {
     case 'daily': return daysSince > 1;
     case 'weekly': return daysSince > 7;
     case 'biweekly': return daysSince > 14;
     case 'monthly': return daysSince > 30;
+    // Add cases for other potential interval strings from backend if needed
     default: return false;
   }
 };
 
 // Format days since last interaction in a user-friendly way
-const formatDaysSince = (days: number): string => {
+const formatDaysSince = (days: number | "Never"): string => {
+  if (days === "Never") return 'Never';
   if (days === 0) return 'Today';
   if (days === 1) return 'Yesterday';
   return `${days} days ago`;
@@ -125,11 +125,12 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   const { theme } = useTheme();
   const styles = themedStyles(theme);
 
-  const [relationships, setRelationships] = useState<Relationship[]>([]);
+  // Use the specific dashboard item type for state
+  const [relationships, setRelationships] = useState<RelationshipDashboardItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Animation value for header
   const scrollY = new Animated.Value(0);
   const headerHeight = scrollY.interpolate({
@@ -145,66 +146,49 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
       setLoading(true);
     }
     setError(null);
-    
+
     try {
-      // Fetch dashboard data from the API
+      // Fetch dashboard data from the API - returns RelationshipDashboardItem[]
       const dashboardData = await getDashboardData();
-      
+
       if (!dashboardData || !Array.isArray(dashboardData)) {
         setError('Invalid data format received from server');
         return;
       }
-      
-      // Process the data to match our frontend needs
+
+      // Data already matches RelationshipDashboardItem, just need to calculate isOverdue
       const processedData = dashboardData.map((item) => {
-        // Convert backend format to frontend format
-        const relationship: Relationship = {
-          id: item.id,
-          name: item.name || 'Unknown',
-          photo_url: item.photo_url,
-          photo: item.photo_url, // For backward compatibility
-          level: item.level || 1,
-          category: item.category || 'Friend',
-          tags: item.tags || [],
-          categories: [item.category || 'Friend', ...(item.tags || [])], // Combine category and tags for UI
-          relationship_type: item.relationship_type || '',
-          reminder_interval: item.reminder_interval || '',
-          reminderInterval: item.reminder_interval || '', // For backward compatibility
-          daysSinceLastInteraction: typeof item.days_since_interaction === 'number' 
-            ? item.days_since_interaction 
-            : 0,
-          xp: item.xp || 0
-        };
-        
-        // Calculate if the relationship is overdue
-        relationship.isOverdue = isOverdue(
-          relationship.daysSinceLastInteraction || 0, 
-          relationship.reminder_interval || relationship.reminderInterval
+        // Calculate isOverdue based on fetched data
+        const overdue = isOverdue(
+          item.days_since_interaction,
+          // Need reminder_interval on dashboard item from backend
+          // Assuming it's available (if not, backend needs adjustment or remove overdue logic here)
+          (item as any).reminder_interval // Temporary cast if reminder_interval isn't in type yet
         );
-        
-        return relationship;
+        return { ...item, isOverdue: overdue }; // Add isOverdue flag
       });
-      
+
       // Sort relationships: overdue first, then by level (descending)
       const sortedData = processedData.sort((a, b) => {
         if (a.isOverdue && !b.isOverdue) return -1;
         if (!a.isOverdue && b.isOverdue) return 1;
         return (b.level || 0) - (a.level || 0);
       });
-      
+
       setRelationships(sortedData);
-    } catch (error) { 
+    } catch (error) {
+      console.error('[API] Error fetching dashboard data:', error); // Log the actual error
       if (error instanceof Error) {
         setError(error.message);
       } else {
         setError('Failed to connect to the server');
       }
-    } finally { 
+    } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
-  
+
   const onRefresh = () => {
     fetchData(true);
   };
@@ -212,7 +196,7 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     // Track if component is mounted to prevent state updates after unmount
     let isMounted = true;
-    
+
     const loadData = async () => {
       if (!isMounted) return;
       try {
@@ -221,19 +205,21 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
         console.error('[Dashboard] Error in useEffect data loading:', e);
       }
     };
-    
+
     loadData();
-    
+
     // Cleanup function to prevent state updates after unmount
     return () => {
       isMounted = false;
     };
   }, []); // Empty dependency array means this runs once on mount
 
-  const renderItem = ({ item }: { item: Relationship }) => {
-    const isMainCategory = (category: string) => 
-      category === item.category || category === 'Friend' || category === 'Business' || category === 'Family';
-    
+  // Add isOverdue to item type for rendering
+  const renderItem = ({ item }: { item: RelationshipDashboardItem & { isOverdue?: boolean } }) => {
+    // const isMainCategory = (category: string) =>
+    //   category === item.category || category === 'Friend' || category === 'Business' || category === 'Family';
+    // ^^^^ Logic needs update for multiple categories if primary styling is desired
+
     return (
       <TouchableOpacity
         style={[
@@ -241,7 +227,8 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
           item.isOverdue && styles.overdueItemContainer
         ]}
         activeOpacity={0.7}
-        onPress={() => navigation.navigate('LogInteraction', { personId: String(item.id), personName: item.name })}
+        // Navigate to Profile first, then LogInteraction can be accessed from there
+        onPress={() => navigation.navigate('Profile', { personId: String(item.id) })}
       >
         {/* Left section with photo and quick log button */}
         <View style={styles.leftSection}>
@@ -252,7 +239,7 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
               item.isOverdue && styles.photoContainerOverdue
             ]}
             onPress={(e) => {
-              e.stopPropagation();
+              e.stopPropagation(); // Prevent triggering the outer onPress
               navigation.navigate('Profile', { personId: String(item.id) });
             }}
           >
@@ -261,15 +248,15 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
             ) : (
               <Text style={styles.photoInitial}>{item.name.charAt(0).toUpperCase()}</Text>
             )}
-            
+
             {/* Level badge */}
             <View style={styles.levelBadge}>
               <Text style={styles.levelBadgeText}>{item.level}</Text>
             </View>
           </TouchableOpacity>
-          
-          {/* Quick log button */}
-          <TouchableOpacity 
+
+          {/* Quick log button - Removed as main card press goes to Profile */}
+          {/* <TouchableOpacity
             style={styles.quickLogButton}
             onPress={(e) => {
               e.stopPropagation();
@@ -277,7 +264,7 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
             }}
           >
             <Text style={styles.quickLogButtonText}>Log</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
 
         {/* Details Section */}
@@ -286,29 +273,29 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.itemName} numberOfLines={1} ellipsizeMode="tail">
               {item.name}
             </Text>
-            
+
             <Text style={[
               styles.daysSinceText,
               item.isOverdue && styles.daysSinceTextOverdue
             ]}>
-              {formatDaysSince(item.daysSinceLastInteraction || 0)}
+              {formatDaysSince(item.days_since_interaction)}
             </Text>
           </View>
-          
-          {/* XP Bar */}
-          <MiniXpBar currentXp={item.xp} level={item.level || 1} theme={theme} />
-          
-          {/* Categories */}
+
+          {/* XP Bar - Using level as placeholder */}
+          <MiniXpBar level={item.level || 1} theme={theme} />
+
+          {/* Categories - Use item.categories array */}
           <View style={styles.categoriesContainer}>
             {item.categories && item.categories
-              .filter((category, index, self) => self.indexOf(category) === index) // Remove duplicates
+              .filter((category, index, self) => self.indexOf(category) === index) // Remove duplicates if any
               .map((category, index) => (
-                <CategoryTag 
-                  key={index} 
-                  label={category} 
+                <CategoryTag
+                  key={index}
+                  label={category}
                   isOverdue={item.isOverdue}
-                  isPrimary={isMainCategory(category)}
-                  theme={theme} 
+                  // isPrimary={isMainCategory(category)} // Revisit primary styling
+                  theme={theme}
                 />
               ))
             }
@@ -321,7 +308,7 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   // Render header component for FlatList
   const renderHeader = () => (
     <Animated.View style={[styles.header, { height: headerHeight }]}>
-      
+       {/* Can add a title back here if needed */}
       <Text style={styles.headerSubtitle}>
         {relationships.length} {relationships.length === 1 ? 'relationship' : 'relationships'} tracked
       </Text>
@@ -335,7 +322,7 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
       <Text style={styles.emptyText}>
         Start tracking your real-world relationships by adding your first connection.
       </Text>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.emptyAddButton}
         onPress={() => navigation.navigate('AddPerson')}
       >
@@ -347,7 +334,7 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   // Render footer with add button
   const renderFooter = () => (
     <View style={styles.footer}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.addButton}
         onPress={() => navigation.navigate('AddPerson')}
       >
@@ -364,13 +351,13 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
       </View>
     );
   }
-  
+
   if (error && !refreshing) {
     return (
       <View style={[styles.container, styles.centerContent]}>
         <Text style={styles.errorTitle}>Connection Error</Text>
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.retryButton}
           onPress={() => fetchData()}
         >
@@ -390,8 +377,8 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
         ListEmptyComponent={renderEmptyComponent}
         ListFooterComponent={relationships.length > 0 ? renderFooter : null}
         contentContainerStyle={
-          relationships.length === 0 
-            ? styles.emptyListContentContainer 
+          relationships.length === 0
+            ? styles.emptyListContentContainer
             : styles.listContentContainer
         }
         refreshControl={
@@ -415,15 +402,15 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
 // Enhanced styles with improved visual design
 const themedStyles = (theme: Theme) => StyleSheet.create({
   // Container styles
-  container: { 
-    flex: 1, 
-    backgroundColor: theme.colors.background 
+  container: {
+    flex: 1,
+    backgroundColor: theme.colors.background
   },
-  centerContent: { 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center'
   },
-  
+
   // Header styles
   header: {
     paddingHorizontal: theme.spacing.lg,
@@ -442,7 +429,7 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     fontSize: theme.typography.body.fontSize,
     color: theme.colors.textSecondary,
   },
-  
+
   // List content styles
   listContentContainer: {
     paddingBottom: theme.spacing.xl,
@@ -452,7 +439,7 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     justifyContent: 'center',
     paddingBottom: theme.spacing.xl,
   },
-  
+
   // Item container styles
   itemContainer: {
     backgroundColor: theme.colors.surface,
@@ -472,7 +459,7 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: theme.colors.error,
   },
-  
+
   // Left section styles (photo and log button)
   leftSection: {
     marginRight: theme.spacing.md,
@@ -493,15 +480,15 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
   photoContainerOverdue: {
     borderColor: theme.colors.error,
   },
-  photo: { 
-    width: 56, 
-    height: 56, 
-    borderRadius: 28 
+  photo: {
+    width: 56,
+    height: 56,
+    borderRadius: 28
   },
-  photoInitial: { 
-    fontSize: theme.typography.h3.fontSize, 
-    color: theme.colors.background, 
-    fontWeight: 'bold' 
+  photoInitial: {
+    fontSize: theme.typography.h3.fontSize,
+    color: theme.colors.background,
+    fontWeight: 'bold'
   },
   levelBadge: {
     position: 'absolute',
@@ -521,20 +508,20 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
-  quickLogButton: {
+  quickLogButton: { // Style kept if needed later
     backgroundColor: theme.colors.primary + '20',
     paddingVertical: theme.spacing.xs / 2,
     paddingHorizontal: theme.spacing.sm,
     borderRadius: 4,
   },
-  quickLogButtonText: {
+  quickLogButtonText: { // Style kept if needed later
     color: theme.colors.primary,
     fontSize: 12,
     fontWeight: '600',
   },
-  
+
   // Details section styles
-  itemDetails: { 
+  itemDetails: {
     flex: 1,
   },
   nameAndDaysContainer: {
@@ -543,80 +530,84 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: theme.spacing.xs,
   },
-  itemName: { 
-    fontSize: theme.typography.h4.fontSize, 
-    fontWeight: theme.typography.h4.fontWeight, 
+  itemName: {
+    fontSize: theme.typography.h4.fontSize,
+    fontWeight: theme.typography.h4.fontWeight,
     color: theme.colors.text,
-    flex: 1,
+    flex: 1, // Allow name to take available space
+    marginRight: theme.spacing.sm, // Add margin to prevent overlap
   },
   daysSinceText: {
     fontSize: theme.typography.caption.fontSize,
     color: theme.colors.textSecondary,
-    marginLeft: theme.spacing.sm,
+    // Removed marginLeft as space-between handles spacing
   },
   daysSinceTextOverdue: {
     color: theme.colors.error,
     fontWeight: '500',
   },
-  
+
   // XP Bar styles
-  miniXpBarContainer: { 
+  miniXpBarContainer: {
     marginBottom: theme.spacing.sm,
   },
-  miniXpBarBackground: { 
-    height: 6, 
-    backgroundColor: theme.colors.border, 
-    borderRadius: 3, 
+  miniXpBarBackground: {
+    height: 6,
+    backgroundColor: theme.colors.border,
+    borderRadius: 3,
     overflow: 'hidden',
-    marginBottom: 2,
+    // Removed marginBottom as spacing is handled by container
   },
-  miniXpBarForeground: { 
-    height: '100%', 
-    backgroundColor: theme.colors.primary, 
+  miniXpBarForeground: {
+    height: '100%',
+    backgroundColor: theme.colors.primary,
     borderRadius: 3,
   },
-  xpText: {
+  xpText: { // Style kept if needed later
     fontSize: 10,
     color: theme.colors.textSecondary,
     textAlign: 'right',
   },
-  
+
   // Categories styles
-  categoriesContainer: { 
-    flexDirection: 'row', 
+  categoriesContainer: {
+    flexDirection: 'row',
     flexWrap: 'wrap',
+    marginTop: theme.spacing.xs, // Add some top margin
   },
-  categoryTag: { 
-    backgroundColor: theme.colors.border, 
-    paddingVertical: 2, 
-    paddingHorizontal: theme.spacing.sm, 
-    borderRadius: 4, 
-    marginRight: theme.spacing.xs, 
+  categoryTag: {
+    backgroundColor: theme.colors.border,
+    paddingVertical: 2,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: 4,
+    marginRight: theme.spacing.xs,
     marginBottom: theme.spacing.xs,
   },
-  primaryCategoryTag: {
+  primaryCategoryTag: { // Style kept if needed later
     backgroundColor: theme.colors.primary + '30',
   },
-  categoryTagOverdue: { 
+  categoryTagOverdue: {
     backgroundColor: theme.colors.error + '20',
   },
-  categoryTagText: { 
-    color: theme.colors.textSecondary, 
+  categoryTagText: {
+    color: theme.colors.textSecondary,
     fontSize: 11,
   },
-  primaryCategoryTagText: {
+  primaryCategoryTagText: { // Style kept if needed later
     color: theme.colors.primary,
     fontWeight: '500',
   },
-  categoryTagTextOverdue: { 
-    color: theme.colors.error, 
+  categoryTagTextOverdue: {
+    color: theme.colors.error,
     fontWeight: '500',
   },
-  
+
   // Empty state styles
   emptyContainer: {
     padding: theme.spacing.xl,
     alignItems: 'center',
+    flexGrow: 1, // Ensure it takes space
+    justifyContent: 'center', // Center content vertically
   },
   emptyTitle: {
     fontSize: theme.typography.h2.fontSize,
@@ -641,7 +632,7 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  
+
   // Footer styles
   footer: {
     padding: theme.spacing.md,
@@ -658,10 +649,10 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  
+
   // Loading and error states
-  loadingText: { 
-    color: theme.colors.textSecondary, 
+  loadingText: {
+    color: theme.colors.textSecondary,
     marginTop: theme.spacing.sm,
   },
   errorTitle: {
@@ -670,11 +661,12 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     color: theme.colors.error,
     marginBottom: theme.spacing.sm,
   },
-  errorText: { 
-    color: theme.colors.textSecondary, 
-    fontSize: theme.typography.body.fontSize, 
+  errorText: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.typography.body.fontSize,
     marginBottom: theme.spacing.lg,
     textAlign: 'center',
+    paddingHorizontal: theme.spacing.lg, // Add padding for better readability
   },
   retryButton: {
     backgroundColor: theme.colors.primary,
