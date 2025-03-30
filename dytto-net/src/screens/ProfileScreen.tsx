@@ -23,8 +23,8 @@ import { RelationshipOverview } from '../types/Relationship';
 import { Interaction } from '../types/Interaction';
 import { useTheme } from '../context/ThemeContext';
 import { Theme } from '../types/theme';
-// Removed Icon import as it causes errors - can be added back if dependency is fixed
-// import Icon from 'react-native-vector-icons/Ionicons';
+// Import Icon for tab navigation
+import Icon from 'react-native-vector-icons/Ionicons';
 
 // Get screen dimensions
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -40,6 +40,22 @@ interface Props {
 
 // Tab type definition
 type TabType = 'Overview' | 'Thread' | 'Tree' | 'Insights';
+
+// Icon mapping for tabs
+const getTabIcon = (tab: TabType): string => {
+  switch (tab) {
+    case 'Overview':
+      return 'home-outline';
+    case 'Thread':
+      return 'chatbubbles-outline';
+    case 'Tree':
+      return 'git-branch-outline';
+    case 'Insights':
+      return 'bar-chart-outline';
+    default:
+      return '';
+  }
+};
 
 // --- Reusable Components ---
 
@@ -101,9 +117,11 @@ const TabButton: React.FC<{
       style={[styles.tabButton, active && styles.activeTabButton]}
       onPress={onPress}
     >
-      <Text style={[styles.tabButtonText, active && styles.activeTabButtonText]}>
-        {label}
-      </Text>
+      <Icon 
+        name={getTabIcon(label)} 
+        size={24} 
+        color={active ? theme.colors.primary : theme.colors.textSecondary} 
+      />
       {active && <View style={styles.activeTabIndicator} />}
     </TouchableOpacity>
   );

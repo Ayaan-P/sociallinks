@@ -310,7 +310,7 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
     <Animated.View style={[styles.header, { height: headerHeight }]}>
        {/* Can add a title back here if needed */}
       <Text style={styles.headerSubtitle}>
-        {relationships.length} {relationships.length === 1 ? 'relationship' : 'relationships'} tracked
+        {relationships.length} {relationships.length === 1 ? 'Link' : 'Links'} 
       </Text>
     </Animated.View>
   );
@@ -414,7 +414,7 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
   // Header styles
   header: {
     paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.lg,
+    
     paddingBottom: theme.spacing.md,
     backgroundColor: theme.colors.background,
     justifyContent: 'flex-end',
@@ -428,6 +428,7 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
   headerSubtitle: {
     fontSize: theme.typography.body.fontSize,
     color: theme.colors.textSecondary,
+    textAlign: 'center',
   },
 
   // List content styles
