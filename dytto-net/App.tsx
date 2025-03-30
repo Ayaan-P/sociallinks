@@ -8,7 +8,7 @@ import { StyleSheet } from 'react-native';
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddPersonScreen from './src/screens/AddPersonScreen';
 import LogInteractionScreen from './src/screens/LogInteractionScreen';
-import ProfileScreen from './src/screens/ProfileScreen';
+import ProfileScreen from './src/screens/ProfileScreen/index';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext'; // Import useTheme as well
 
 // Define the stack navigator
