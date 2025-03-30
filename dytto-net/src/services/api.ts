@@ -5,7 +5,7 @@ import { Interaction, CreateInteractionPayload } from '../types/Interaction';
 import { Quest } from '../types/Quest';
 
 // Define the base URL for the API
-export const API_BASE_URL = 'https://legal-waves-juggle.loca.lt'; // Update this with your actual backend URL
+export const API_BASE_URL = 'https://young-wombats-rhyme.loca.lt'; // Update this with your actual backend URL
 
 // Create an axios instance with the base URL
 const api = axios.create({
@@ -388,6 +388,117 @@ export const generateQuest = async (relationshipId: string | number): Promise<Qu
     return response.data;
   } catch (error) {
     handleApiError(error, `/relationships/${relationshipId}/generate_quest (POST)`);
+    throw error;
+  }
+};
+
+// Insights API
+
+export interface InsightData {
+  interaction_trends: {
+    total_interactions: number;
+    weekly_frequency: number;
+    monthly_frequency: number;
+    longest_streak: number;
+    longest_gap: number;
+    average_xp: number;
+    trend_insight: string;
+  };
+  emotional_summary: {
+    common_tone: string;
+    tone_shift: string | null;
+    emotional_keywords: string[];
+    depth_ratio: {
+      high: number;
+      medium: number;
+      low: number;
+    };
+    summary: string;
+  };
+  relationship_forecasts: {
+    forecasts: Array<{
+      path: string;
+      confidence: number;
+      reasoning: string;
+    }>;
+    not_enough_data: boolean;
+  };
+  smart_suggestions: {
+    suggestions: Array<{
+      type: string;
+      content: string;
+    }>;
+  };
+  generated_at: string;
+}
+
+export const fetchRelationshipInsights = async (relationshipId: string | number): Promise<InsightData> => {
+  try {
+    console.log(`[API] Fetching insights for relationship: ${relationshipId}`);
+    // Use a longer timeout for this endpoint since it involves AI processing
+    const response = await axios.get(`${API_BASE_URL}/relationships/${relationshipId}/insights`, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000, // 30 second timeout for AI processing
+    });
+    console.log(`[API] Insights for relationship ${relationshipId} fetched`);
+    return response.data;
+  } catch (error) {
+    // If it's a timeout error, provide a more specific error message
+    if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
+      console.error(`[API] Insights request timed out for relationship ${relationshipId}`);
+      throw new Error('The AI insights are taking longer than expected to generate. Please try again later.');
+    }
+    handleApiError(error, `/relationships/${relationshipId}/insights`);
+    throw error;
+  }
+};
+
+export const fetchInteractionTrends = async (relationshipId: string | number): Promise<InsightData['interaction_trends']> => {
+  try {
+    console.log(`[API] Fetching interaction trends for relationship: ${relationshipId}`);
+    const response = await api.get(`/relationships/${relationshipId}/insights/interaction_trends`);
+    console.log(`[API] Interaction trends for relationship ${relationshipId} fetched`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, `/relationships/${relationshipId}/insights/interaction_trends`);
+    throw error;
+  }
+};
+
+export const fetchEmotionalSummary = async (relationshipId: string | number): Promise<InsightData['emotional_summary']> => {
+  try {
+    console.log(`[API] Fetching emotional summary for relationship: ${relationshipId}`);
+    const response = await api.get(`/relationships/${relationshipId}/insights/emotional_summary`);
+    console.log(`[API] Emotional summary for relationship ${relationshipId} fetched`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, `/relationships/${relationshipId}/insights/emotional_summary`);
+    throw error;
+  }
+};
+
+export const fetchRelationshipForecasts = async (relationshipId: string | number): Promise<InsightData['relationship_forecasts']> => {
+  try {
+    console.log(`[API] Fetching relationship forecasts for relationship: ${relationshipId}`);
+    const response = await api.get(`/relationships/${relationshipId}/insights/relationship_forecasts`);
+    console.log(`[API] Relationship forecasts for relationship ${relationshipId} fetched`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, `/relationships/${relationshipId}/insights/relationship_forecasts`);
+    throw error;
+  }
+};
+
+export const fetchSmartSuggestions = async (relationshipId: string | number): Promise<InsightData['smart_suggestions']> => {
+  try {
+    console.log(`[API] Fetching smart suggestions for relationship: ${relationshipId}`);
+    const response = await api.get(`/relationships/${relationshipId}/insights/smart_suggestions`);
+    console.log(`[API] Smart suggestions for relationship ${relationshipId} fetched`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, `/relationships/${relationshipId}/insights/smart_suggestions`);
     throw error;
   }
 };

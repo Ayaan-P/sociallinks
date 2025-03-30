@@ -6,6 +6,7 @@ from services.ai_processing import analyze_sentiment, calculate_xp, get_relation
 from services.quest_generation import generate_quest, generate_milestone_quest, generate_recurring_quest
 from services.leveling_system import calculate_level, get_xp_progress_in_level # Import the new leveling functions
 from services.tree_system import get_relationship_tree_data, suggest_tree_evolution # Import tree system functions
+from services.ai_insights import generate_interaction_trends, generate_emotional_summary, generate_relationship_forecasts, generate_smart_suggestions, generate_complete_insights, get_stored_insights, generate_and_store_insights
 from datetime import datetime, timezone
 
 # Load environment variables from .env file
@@ -404,6 +405,15 @@ def create_interaction_log():
         except Exception as e:
              print(f"Error updating interaction log with AI results: {str(e)}")
 
+        # Generate and store insights in the background
+        try:
+            from services.ai_insights import generate_and_store_insights
+            # We don't wait for this to complete - it runs asynchronously
+            print(f"Triggering background insights generation for relationship {relationship_id}")
+            generate_and_store_insights(supabase, relationship_id)
+        except Exception as insights_error:
+            print(f"Error generating insights after interaction: {insights_error}")
+            # Don't fail the interaction creation if insights generation fails
 
         return jsonify(interaction_data), 201
 
@@ -778,6 +788,16 @@ def update_quest(quest_id):
                                 print(f"Error logging level history after quest completion: {history_error}")
             except Exception as xp_error:
                 print(f"Error processing XP reward for quest completion: {xp_error}")
+            
+            # Generate and store insights in the background after quest completion
+            try:
+                from services.ai_insights import generate_and_store_insights
+                # We don't wait for this to complete - it runs asynchronously
+                print(f"Triggering background insights generation for relationship {relationship_id} after quest completion")
+                generate_and_store_insights(supabase, relationship_id)
+            except Exception as insights_error:
+                print(f"Error generating insights after quest completion: {insights_error}")
+                # Don't fail the quest update if insights generation fails
         
         return jsonify({"message": "Quest updated successfully"}), 200
     except Exception as e:
@@ -889,6 +909,203 @@ def mark_interaction_as_milestone(interaction_id):
         return jsonify({"message": "Interaction marked as milestone successfully"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# --- Insights System Endpoints ---
+
+# API endpoint to get all insights for a relationship
+@app.route('/relationships/<int:relationship_id>/insights', methods=['GET'])
+def get_relationship_insights(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Check if the relationship exists
+        rel_response = supabase.table('relationships').select("id").eq('id', relationship_id).maybe_single().execute()
+        if hasattr(rel_response, 'error') and rel_response.error:
+            return jsonify({"error": f"Error fetching relationship: {rel_response.error.message}"}), 500
+        if not rel_response.data:
+            return jsonify({"error": "Relationship not found"}), 404
+            
+        # Check if there are any interactions for this relationship
+        interactions_response = supabase.table('interactions').select("id").eq('relationship_id', relationship_id).limit(1).execute()
+        if hasattr(interactions_response, 'error') and interactions_response.error:
+            return jsonify({"error": f"Error fetching interactions: {interactions_response.error.message}"}), 500
+        
+        # If there are no interactions, return a specific message
+        if not interactions_response.data:
+            return jsonify({"error": "No interactions available yet. Log some interactions to generate insights."}), 404
+        
+        # First, try to get stored insights
+        stored_insights = get_stored_insights(supabase, relationship_id)
+        
+        if stored_insights:
+            print(f"Using stored insights for relationship {relationship_id}")
+            return jsonify(stored_insights), 200
+        
+        # If no stored insights or they're too old, generate new ones
+        print(f"No recent stored insights found for relationship {relationship_id}, generating new ones")
+        
+        # Generate and store insights
+        success = generate_and_store_insights(supabase, relationship_id)
+        
+        if not success:
+            # Check if we have enough interactions to generate meaningful insights
+            interactions_count_response = supabase.table('interactions').select("id").eq('relationship_id', relationship_id).execute()
+            if len(interactions_count_response.data) < 3:  # Arbitrary threshold - need at least 3 interactions for meaningful insights
+                return jsonify({"error": "Not enough interactions to generate meaningful insights. Log more interactions."}), 404
+            else:
+                return jsonify({"error": "Failed to generate insights. Please try again later."}), 500
+        
+        # Fetch the newly stored insights
+        new_insights = get_stored_insights(supabase, relationship_id, max_age_hours=1)  # Very short max age to ensure we get the ones we just created
+        
+        if not new_insights:
+            return jsonify({"error": "Failed to retrieve newly generated insights. Please try again later."}), 500
+        
+        return jsonify(new_insights), 200
+    except Exception as e:
+        return jsonify({"error": f"Error generating insights: {str(e)}"}), 500
+
+# API endpoint to get interaction trends for a relationship
+@app.route('/relationships/<int:relationship_id>/insights/interaction_trends', methods=['GET'])
+def get_relationship_interaction_trends(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Fetch relationship data
+        rel_response = supabase.table('relationships').select("*").eq('id', relationship_id).maybe_single().execute()
+        if hasattr(rel_response, 'error') and rel_response.error:
+            return jsonify({"error": f"Error fetching relationship: {rel_response.error.message}"}), 500
+        if not rel_response.data:
+            return jsonify({"error": "Relationship not found"}), 404
+        
+        relationship_data = dict(rel_response.data)
+        
+        # Fetch all interactions for this relationship
+        interactions_response = supabase.table('interactions').select("*").eq('relationship_id', relationship_id).order('created_at', desc=True).execute()
+        if hasattr(interactions_response, 'error') and interactions_response.error:
+            return jsonify({"error": f"Error fetching interactions: {interactions_response.error.message}"}), 500
+        
+        interactions = [dict(row) for row in interactions_response.data]
+        
+        # Generate interaction trends
+        trends = generate_interaction_trends(relationship_id, interactions, relationship_data)
+        
+        return jsonify(trends), 200
+    except Exception as e:
+        return jsonify({"error": f"Error generating interaction trends: {str(e)}"}), 500
+
+# API endpoint to get emotional summary for a relationship
+@app.route('/relationships/<int:relationship_id>/insights/emotional_summary', methods=['GET'])
+def get_relationship_emotional_summary(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Fetch relationship data
+        rel_response = supabase.table('relationships').select("*").eq('id', relationship_id).maybe_single().execute()
+        if hasattr(rel_response, 'error') and rel_response.error:
+            return jsonify({"error": f"Error fetching relationship: {rel_response.error.message}"}), 500
+        if not rel_response.data:
+            return jsonify({"error": "Relationship not found"}), 404
+        
+        relationship_data = dict(rel_response.data)
+        
+        # Fetch categories for this relationship
+        rc_response = supabase.table('relationship_categories').select("categories(name)").eq('relationship_id', relationship_id).execute()
+        if not (hasattr(rc_response, 'error') and rc_response.error):
+            relationship_data['categories'] = [link['categories']['name'] for link in rc_response.data if link.get('categories')]
+        else:
+            relationship_data['categories'] = []
+        
+        # Fetch all interactions for this relationship
+        interactions_response = supabase.table('interactions').select("*").eq('relationship_id', relationship_id).order('created_at', desc=True).execute()
+        if hasattr(interactions_response, 'error') and interactions_response.error:
+            return jsonify({"error": f"Error fetching interactions: {interactions_response.error.message}"}), 500
+        
+        interactions = [dict(row) for row in interactions_response.data]
+        
+        # Generate emotional summary
+        summary = generate_emotional_summary(relationship_id, interactions, relationship_data)
+        
+        return jsonify(summary), 200
+    except Exception as e:
+        return jsonify({"error": f"Error generating emotional summary: {str(e)}"}), 500
+
+# API endpoint to get relationship forecasts
+@app.route('/relationships/<int:relationship_id>/insights/relationship_forecasts', methods=['GET'])
+def get_relationship_forecasts(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Fetch relationship data
+        rel_response = supabase.table('relationships').select("*").eq('id', relationship_id).maybe_single().execute()
+        if hasattr(rel_response, 'error') and rel_response.error:
+            return jsonify({"error": f"Error fetching relationship: {rel_response.error.message}"}), 500
+        if not rel_response.data:
+            return jsonify({"error": "Relationship not found"}), 404
+        
+        relationship_data = dict(rel_response.data)
+        
+        # Fetch categories for this relationship
+        rc_response = supabase.table('relationship_categories').select("categories(name)").eq('relationship_id', relationship_id).execute()
+        if not (hasattr(rc_response, 'error') and rc_response.error):
+            relationship_data['categories'] = [link['categories']['name'] for link in rc_response.data if link.get('categories')]
+        else:
+            relationship_data['categories'] = []
+        
+        # Fetch all interactions for this relationship
+        interactions_response = supabase.table('interactions').select("*").eq('relationship_id', relationship_id).order('created_at', desc=True).execute()
+        if hasattr(interactions_response, 'error') and interactions_response.error:
+            return jsonify({"error": f"Error fetching interactions: {interactions_response.error.message}"}), 500
+        
+        interactions = [dict(row) for row in interactions_response.data]
+        
+        # Generate relationship forecasts
+        forecasts = generate_relationship_forecasts(relationship_id, interactions, relationship_data)
+        
+        return jsonify(forecasts), 200
+    except Exception as e:
+        return jsonify({"error": f"Error generating relationship forecasts: {str(e)}"}), 500
+
+# API endpoint to get smart suggestions for a relationship
+@app.route('/relationships/<int:relationship_id>/insights/smart_suggestions', methods=['GET'])
+def get_relationship_smart_suggestions(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Fetch relationship data
+        rel_response = supabase.table('relationships').select("*").eq('id', relationship_id).maybe_single().execute()
+        if hasattr(rel_response, 'error') and rel_response.error:
+            return jsonify({"error": f"Error fetching relationship: {rel_response.error.message}"}), 500
+        if not rel_response.data:
+            return jsonify({"error": "Relationship not found"}), 404
+        
+        relationship_data = dict(rel_response.data)
+        
+        # Fetch categories for this relationship
+        rc_response = supabase.table('relationship_categories').select("categories(name)").eq('relationship_id', relationship_id).execute()
+        if not (hasattr(rc_response, 'error') and rc_response.error):
+            relationship_data['categories'] = [link['categories']['name'] for link in rc_response.data if link.get('categories')]
+        else:
+            relationship_data['categories'] = []
+        
+        # Fetch all interactions for this relationship
+        interactions_response = supabase.table('interactions').select("*").eq('relationship_id', relationship_id).order('created_at', desc=True).execute()
+        if hasattr(interactions_response, 'error') and interactions_response.error:
+            return jsonify({"error": f"Error fetching interactions: {interactions_response.error.message}"}), 500
+        
+        interactions = [dict(row) for row in interactions_response.data]
+        
+        # Generate smart suggestions
+        suggestions = generate_smart_suggestions(relationship_id, interactions, relationship_data)
+        
+        return jsonify(suggestions), 200
+    except Exception as e:
+        return jsonify({"error": f"Error generating smart suggestions: {str(e)}"}), 500
     if not supabase:
         return jsonify({"error": "Supabase is not initialized."}), 500
 

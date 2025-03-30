@@ -381,8 +381,7 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
 
         {activeTab === 'Insights' && (
           <InsightsTab
-            insights={insights}
-            theme={theme}
+            relationshipId={Number(personId)}
           />
         )}
 
