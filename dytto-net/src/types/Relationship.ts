@@ -4,6 +4,14 @@ import { Interaction } from './Interaction'; // Assuming Interaction type exists
 export interface Relationship {
   id: number; // Backend provides a numeric ID
   name: string;
+  bio?: string; // Brief description of the person
+  birthday?: string; // Important date to remember
+  phone?: string; // Contact phone number
+  email?: string; // Contact email
+  location?: string; // Where the person lives/works
+  preferred_communication?: string; // How they prefer to be contacted
+  meeting_frequency?: string; // How often to meet
+  notes?: string; // Additional notes
   relationship_type: string;
   reminder_interval: string;
   categories: string[]; // Array of category names from backend
@@ -44,6 +52,14 @@ export interface RelationshipOverview {
 // Type for creating a new relationship (matches POST /relationships request body)
 export interface CreateRelationshipPayload {
     name: string;
+    bio?: string; // Brief description
+    birthday?: string; // Important date
+    phone?: string; // Contact phone
+    email?: string; // Contact email
+    location?: string; // Where they live/work
+    preferred_communication?: string; // How they prefer to be contacted
+    meeting_frequency?: string; // How often to meet
+    notes?: string; // Additional notes
     relationship_type: string;
     reminder_interval: string;
     initial_category_name: string; // Name of the first category
@@ -54,6 +70,14 @@ export interface CreateRelationshipPayload {
 // Type for updating a relationship (matches PUT /relationships/{id} request body)
 export interface UpdateRelationshipPayload {
     name?: string;
+    bio?: string; // Brief description
+    birthday?: string; // Important date
+    phone?: string; // Contact phone
+    email?: string; // Contact email
+    location?: string; // Where they live/work
+    preferred_communication?: string; // How they prefer to be contacted
+    meeting_frequency?: string; // How often to meet
+    notes?: string; // Additional notes
     relationship_type?: string;
     reminder_interval?: string;
     photo_url?: string;

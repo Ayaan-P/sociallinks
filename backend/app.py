@@ -63,9 +63,27 @@ def create_relationship():
             return jsonify({"error": f"Initial category '{initial_category_name}' not found."}), 400
         initial_category_id = category_response.data[0]['id']
 
+        # Get optional fields
+        bio = data.get('bio')
+        birthday = data.get('birthday')
+        phone = data.get('phone')
+        email = data.get('email')
+        location = data.get('location')
+        preferred_communication = data.get('preferred_communication')
+        meeting_frequency = data.get('meeting_frequency')
+        notes = data.get('notes')
+
         # 2. Insert base relationship data (including category column to satisfy NOT NULL constraint)
         rel_response = supabase.table('relationships').insert({
             'name': name,
+            'bio': bio,
+            'birthday': birthday,
+            'phone': phone,
+            'email': email,
+            'location': location,
+            'preferred_communication': preferred_communication,
+            'meeting_frequency': meeting_frequency,
+            'notes': notes,
             'relationship_type': relationship_type,
             'reminder_interval': reminder_interval,
             'category': initial_category_name, # Set category to match initial_category_name

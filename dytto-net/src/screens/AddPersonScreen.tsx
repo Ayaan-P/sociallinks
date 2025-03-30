@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert, ScrollView, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../App'; // Import the param list type
 import { useTheme } from '../context/ThemeContext'; // Import useTheme
@@ -25,6 +26,14 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
   const styles = themedStyles(theme); // Generate themed styles
 
   const [name, setName] = useState('');
+  const [bio, setBio] = useState('');
+  const [birthday, setBirthday] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [location, setLocation] = useState('');
+  const [preferredCommunication, setPreferredCommunication] = useState('');
+  const [meetingFrequency, setMeetingFrequency] = useState('');
+  const [notes, setNotes] = useState('');
   const [photoUri, setPhotoUri] = useState<string | undefined>(undefined);
   const [relationshipCategory, setRelationshipCategory] = useState('Friend');
   const [relationshipType, setRelationshipType] = useState('personal');
@@ -63,6 +72,14 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
       // Create relationship data using the specific payload type
       const relationshipData: CreateRelationshipPayload = {
         name,
+        bio,
+        birthday: birthday || undefined,
+        phone: phone || undefined,
+        email: email || undefined,
+        location: location || undefined,
+        preferred_communication: preferredCommunication || undefined,
+        meeting_frequency: meetingFrequency || undefined,
+        notes: notes || undefined,
         relationship_type: relationshipType,
         reminder_interval: reminderInterval,
         initial_category_name: relationshipCategory,
@@ -83,18 +100,33 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  // State for collapsible sections
+  const [showAdditionalInfo, setShowAdditionalInfo] = useState(false);
+  const [showContactInfo, setShowContactInfo] = useState(false);
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.formSection}>
         <Text style={styles.sectionTitle}>Basic Information</Text>
         
-        <Text style={styles.label}>Name:</Text>
+        <Text style={styles.label}>Name: <Text style={styles.required}>*</Text></Text>
         <TextInput
           style={styles.input}
           value={name}
           onChangeText={setName}
           placeholder="Enter person's name"
           placeholderTextColor={theme.colors.textSecondary}
+        />
+
+        <Text style={styles.label}>Bio:</Text>
+        <TextInput
+          style={[styles.input, styles.multilineInput]}
+          value={bio}
+          onChangeText={setBio}
+          placeholder="Enter a brief description"
+          placeholderTextColor={theme.colors.textSecondary}
+          multiline={true}
+          numberOfLines={3}
         />
 
         <Text style={styles.label}>Photo:</Text>
@@ -107,12 +139,117 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
           </TouchableOpacity>
           {photoUri && <Text style={styles.photoUriText}>Selected: {photoUri.substring(photoUri.lastIndexOf('/') + 1)}</Text>}
         </View>
+        
+        {/* Collapsible Additional Information Section */}
+        <TouchableOpacity 
+          style={styles.collapsibleHeader}
+          onPress={() => setShowAdditionalInfo(!showAdditionalInfo)}
+        >
+          <Text style={styles.collapsibleTitle}>
+            Additional Information {showAdditionalInfo ? '(hide)' : '(show)'}
+          </Text>
+          <Ionicons 
+            name={showAdditionalInfo ? 'chevron-up' : 'chevron-down'} 
+            size={20} 
+            color={theme.colors.text} 
+          />
+        </TouchableOpacity>
+        
+        {showAdditionalInfo && (
+          <View style={styles.collapsibleContent}>
+            <Text style={styles.label}>Birthday:</Text>
+            <TextInput
+              style={styles.input}
+              value={birthday}
+              onChangeText={setBirthday}
+              placeholder="MM/DD/YYYY (optional)"
+              placeholderTextColor={theme.colors.textSecondary}
+            />
+
+            <Text style={styles.label}>Location:</Text>
+            <TextInput
+              style={styles.input}
+              value={location}
+              onChangeText={setLocation}
+              placeholder="Where they live/work (optional)"
+              placeholderTextColor={theme.colors.textSecondary}
+            />
+
+            <Text style={styles.label}>Meeting Frequency:</Text>
+            <TextInput
+              style={styles.input}
+              value={meetingFrequency}
+              onChangeText={setMeetingFrequency}
+              placeholder="How often to meet (optional)"
+              placeholderTextColor={theme.colors.textSecondary}
+            />
+
+            <Text style={styles.label}>Notes:</Text>
+            <TextInput
+              style={[styles.input, styles.multilineInput]}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Additional notes (optional)"
+              placeholderTextColor={theme.colors.textSecondary}
+              multiline={true}
+              numberOfLines={3}
+            />
+          </View>
+        )}
+        
+        {/* Collapsible Contact Information Section */}
+        <TouchableOpacity 
+          style={styles.collapsibleHeader}
+          onPress={() => setShowContactInfo(!showContactInfo)}
+        >
+          <Text style={styles.collapsibleTitle}>
+            Contact Information {showContactInfo ? '(hide)' : '(show)'}
+          </Text>
+          <Ionicons 
+            name={showContactInfo ? 'chevron-up' : 'chevron-down'} 
+            size={20} 
+            color={theme.colors.text} 
+          />
+        </TouchableOpacity>
+        
+        {showContactInfo && (
+          <View style={styles.collapsibleContent}>
+            <Text style={styles.label}>Phone:</Text>
+            <TextInput
+              style={styles.input}
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="Phone number (optional)"
+              placeholderTextColor={theme.colors.textSecondary}
+              keyboardType="phone-pad"
+            />
+            
+            <Text style={styles.label}>Email:</Text>
+            <TextInput
+              style={styles.input}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Email address (optional)"
+              placeholderTextColor={theme.colors.textSecondary}
+              keyboardType="email-address"
+            />
+
+            <Text style={styles.label}>Preferred Communication:</Text>
+            <TextInput
+              style={styles.input}
+              value={preferredCommunication}
+              onChangeText={setPreferredCommunication}
+              placeholder="How they prefer to be contacted (optional)"
+              placeholderTextColor={theme.colors.textSecondary}
+            />
+          </View>
+        )}
       </View>
 
       <View style={styles.formSection}>
-        {/* <Text style={styles.sectionTitle}>Relationship Details</Text> */}
+        <Text style={styles.sectionTitle}>Relationship Details</Text>
         
-        <Text style={styles.label}>Initial Relationship Category:</Text>
+        <Text style={styles.label}>Initial Relationship Category: <Text style={styles.required}>*</Text></Text>
         <View style={styles.optionsContainer}>
           {['Friend', 'Family', 'Business', 'Acquaintance', 'Romantic'].map(category => (
             <TouchableOpacity
@@ -135,7 +272,7 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
           ))}
         </View>
 
-        <Text style={styles.label}>Relationship Type:</Text>
+        <Text style={styles.label}>Relationship Type: <Text style={styles.required}>*</Text></Text>
         <View style={styles.optionsContainer}>
           {['personal', 'professional', 'family'].map(type => (
             <TouchableOpacity
@@ -160,9 +297,9 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       <View style={styles.formSection}>
-        {/* <Text style={styles.sectionTitle}>Reminder Settings</Text> */}
+        <Text style={styles.sectionTitle}>Reminder Settings</Text>
         
-        <Text style={styles.label}>Reminder Interval:</Text>
+        <Text style={styles.label}>Reminder Interval: <Text style={styles.required}>*</Text></Text>
         <View style={styles.optionsContainer}>
           {['weekly', 'biweekly', 'monthly', 'custom'].map(interval => (
             <TouchableOpacity
@@ -231,6 +368,32 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
 
 // Function to generate themed styles
 const themedStyles = (theme: Theme) => StyleSheet.create({
+  required: {
+    color: theme.colors.error || 'red',
+    fontWeight: 'bold',
+  },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: theme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    marginTop: theme.spacing.md,
+  },
+  collapsibleTitle: {
+    fontSize: theme.typography.body.fontSize,
+    fontWeight: 'bold',
+    color: theme.colors.primary,
+  },
+  collapsibleContent: {
+    marginTop: theme.spacing.sm,
+  },
+  multilineInput: {
+    height: 80,
+    textAlignVertical: 'top',
+    paddingTop: 10,
+  },
   container: {
     flex: 1,
     padding: theme.spacing.md,

@@ -5,7 +5,7 @@ import { Interaction, CreateInteractionPayload } from '../types/Interaction';
 import { Quest } from '../types/Quest';
 
 // Define the base URL for the API
-export const API_BASE_URL = 'https://flat-heads-joke.loca.lt'; // Update this with your actual backend URL
+export const API_BASE_URL = 'https://quiet-spies-obey.loca.lt'; // Update this with your actual backend URL
 
 // Create an axios instance with the base URL
 const api = axios.create({
@@ -97,6 +97,17 @@ export const getRelationship = async (id: string | number): Promise<Relationship
 export const createRelationship = async (relationshipData: CreateRelationshipPayload): Promise<Relationship> => {
   try {
     console.log('[API] Creating relationship:', relationshipData.name);
+    
+    // Log optional fields if present
+    if (relationshipData.bio) console.log('[API] Bio provided');
+    if (relationshipData.birthday) console.log('[API] Birthday provided');
+    if (relationshipData.phone) console.log('[API] Phone provided');
+    if (relationshipData.email) console.log('[API] Email provided');
+    if (relationshipData.location) console.log('[API] Location provided');
+    if (relationshipData.preferred_communication) console.log('[API] Preferred communication provided');
+    if (relationshipData.meeting_frequency) console.log('[API] Meeting frequency provided');
+    if (relationshipData.notes) console.log('[API] Notes provided');
+    
     const response = await api.post('/relationships', relationshipData);
     console.log('[API] Relationship created:', response.data);
     return response.data;
