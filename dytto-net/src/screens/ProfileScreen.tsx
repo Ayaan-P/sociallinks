@@ -18,9 +18,10 @@ import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../App';
 // Corrected import name for interaction thread API call
-import { getRelationshipOverview, getRelationshipInteractionsThread, deleteRelationship } from '../services/api';
+import { getRelationshipOverview, getRelationshipInteractionsThread, deleteRelationship, getRelationshipQuests, updateQuest, createQuest, generateQuest, API_BASE_URL } from '../services/api';
 import { RelationshipOverview } from '../types/Relationship';
 import { Interaction } from '../types/Interaction';
+import { Quest } from '../types/Quest';
 import { useTheme } from '../context/ThemeContext';
 import { Theme } from '../types/theme';
 // Import Icon for tab navigation
@@ -275,13 +276,12 @@ const getToneColor = (tone: string, theme: Theme): string => {
 
 // Quest Card Component
 const QuestCard: React.FC<{
-  title: string;
-  description: string;
-  completed: boolean;
+  quest: Quest;
   theme: Theme;
   onPress: () => void;
-}> = ({ title, description, completed, theme, onPress }) => {
+}> = ({ quest, theme, onPress }) => {
   const styles = themedStyles(theme);
+  const completed = quest.quest_status === 'completed';
 
   return (
     <TouchableOpacity
@@ -299,9 +299,11 @@ const QuestCard: React.FC<{
           styles.questTitle,
           completed && styles.questTitleCompleted
         ]}>
-          {title}
+          {quest.quest_description}
         </Text>
-        <Text style={styles.questDescription}>{description}</Text>
+        <Text style={styles.questDescription}>
+          {completed ? 'Completed' : 'Pending'}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -360,27 +362,10 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
 
   // Removed animation values (scrollY, headerHeight) as header is now static
 
-  // Sample quests data (would come from API in real implementation)
-  const [quests] = useState([
-    {
-      id: 1,
-      title: 'Ask about childhood',
-      description: 'Learn about their formative years to deepen your connection',
-      completed: false
-    },
-    {
-      id: 2,
-      title: 'Share a personal belief',
-      description: 'Open up about something meaningful to you',
-      completed: true
-    },
-    {
-      id: 3,
-      title: 'Plan a new activity together',
-      description: 'Try something neither of you have done before',
-      completed: false
-    }
-  ]);
+  // Quests data from API
+  const [quests, setQuests] = useState<Quest[]>([]);
+  const [loadingQuests, setLoadingQuests] = useState(false);
+  const [questError, setQuestError] = useState<string | null>(null);
 
   // Sample tree data (would come from API in real implementation)
   const [treeData] = useState([
@@ -412,6 +397,26 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   ]);
 
+  // Function to fetch quests
+  const fetchQuests = useCallback(async () => {
+    if (!personId) return;
+    
+    setLoadingQuests(true);
+    setQuestError(null);
+    
+    try {
+      const questsResult = await getRelationshipQuests(Number(personId));
+      setQuests(questsResult || []);
+    } catch (err) {
+      console.log("[API] Error fetching quests:", err);
+      // If it's a 404 "No quests found" error, just set empty quests
+      setQuests([]);
+      setQuestError(err instanceof Error ? err.message : "Failed to load quests.");
+    } finally {
+      setLoadingQuests(false);
+    }
+  }, [personId]);
+
   const fetchData = useCallback(async (isRefreshing = false) => {
     if (isRefreshing) {
       setRefreshing(true);
@@ -440,6 +445,10 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
         // This is expected for new relationships
         setInteractions([]);
       }
+      
+      // Also fetch quests
+      await fetchQuests();
+      
     } catch (err) {
       console.error("[API] Error fetching profile data:", err);
       setError(err instanceof Error ? err.message : "An unknown error occurred.");
@@ -447,7 +456,7 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [personId]); // Dependency on personId
+  }, [personId, fetchQuests]); // Dependencies
 
   // useFocusEffect to refresh data when the screen comes into focus
   useFocusEffect(
@@ -488,17 +497,47 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const handleQuestToggle = (id: number) => {
-    // In a real implementation, this would update the quest status via API
+    // Find the quest to determine its current status
+    const quest = quests.find(q => Number(q.id) === id);
+    if (!quest) return;
+    
+    const isCompleted = quest.quest_status === 'completed';
+    const newStatus = isCompleted ? 'pending' : 'completed';
+    const actionText = isCompleted ? 'mark as pending' : 'mark as completed';
+    
     Alert.alert(
       "Quest Status",
-      "Would you like to mark this quest as completed?",
+      `Would you like to ${actionText}?`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Yes",
-          onPress: () => {
-            // Update quest status logic would go here
-            Alert.alert("Success", "Quest status updated!");
+          onPress: async () => {
+            try {
+              // Update quest status via API
+              await updateQuest(id, { quest_status: newStatus });
+              
+              // Update local state
+              setQuests(prevQuests => 
+                prevQuests.map(q => 
+                  Number(q.id) === id ? { ...q, quest_status: newStatus } : q
+                )
+              );
+              
+              // Show success message
+              Alert.alert(
+                "Success", 
+                `Quest ${isCompleted ? 'marked as pending' : 'completed'}!${!isCompleted ? ' You earned XP for completing this quest.' : ''}`
+              );
+              
+              // If we completed a quest, refresh the profile data to get updated XP
+              if (!isCompleted) {
+                fetchData(true);
+              }
+            } catch (err) {
+              console.error("[API] Error updating quest:", err);
+              Alert.alert("Error", `Failed to update quest: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
           }
         }
       ]
@@ -556,17 +595,46 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
 
             {/* Quests Section */}
             <View style={styles.questsSection}>
-              <Text style={styles.sectionTitle}>Relationship Quests</Text>
-              {quests.map(quest => (
-                <QuestCard
-                  key={quest.id}
-                  title={quest.title}
-                  description={quest.description}
-                  completed={quest.completed}
-                  theme={theme}
-                  onPress={() => handleQuestToggle(quest.id)}
-                />
-              ))}
+              <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.sm}}>
+                <Text style={styles.sectionTitle}>Relationship Quests</Text>
+                <TouchableOpacity 
+                  style={styles.generateQuestButton}
+                  onPress={async () => {
+                    try {
+                      setLoadingQuests(true);
+                      // Call the API to generate a new quest using the service function
+                      const newQuest = await generateQuest(personId);
+                      
+                      // Add the new quest to the list
+                      setQuests(prevQuests => [newQuest, ...prevQuests]);
+                      
+                      Alert.alert("Success", "New quest generated!");
+                    } catch (err) {
+                      console.error("[API] Error generating quest:", err);
+                      Alert.alert("Error", `Failed to generate quest: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                    } finally {
+                      setLoadingQuests(false);
+                    }
+                  }}
+                >
+                  <Text style={{color: theme.colors.primary, fontSize: 14}}>+ New Quest</Text>
+                </TouchableOpacity>
+              </View>
+              
+              {loadingQuests ? (
+                <ActivityIndicator size="small" color={theme.colors.primary} style={{marginVertical: theme.spacing.md}} />
+              ) : quests.length > 0 ? (
+                quests.map(quest => (
+                  <QuestCard
+                    key={quest.id}
+                    quest={quest}
+                    theme={theme}
+                    onPress={() => handleQuestToggle(Number(quest.id))}
+                  />
+                ))
+              ) : (
+                <Text style={styles.noInteractionsText}>No quests available yet.</Text>
+              )}
             </View>
 
             {/* Recent Interactions Preview */}
@@ -903,6 +971,9 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
      marginLeft: theme.spacing.xs,
      fontSize: 14,
      fontWeight: '500',
+  },
+  generateQuestButton: {
+     padding: theme.spacing.xs,
   },
   detailsSection: {
     paddingHorizontal: theme.spacing.lg,

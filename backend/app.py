@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from services.ai_processing import analyze_sentiment, calculate_xp, get_relationship_level, update_relationship_level, process_interaction_log_ai, detect_patterns, suggest_evolution, suggest_interaction
+from services.quest_generation import generate_quest, generate_milestone_quest, generate_recurring_quest
 from services.leveling_system import calculate_level, get_xp_progress_in_level # Import the new leveling functions
 from datetime import datetime, timezone
 
@@ -335,7 +336,39 @@ def create_interaction_log():
                 # Decide if this is critical - maybe log error but still return interaction?
             else:
                 print(f"Successfully updated relationship: level={new_level}, xp={new_xp}")
-                 # Optionally log level change in level_history table here
+                
+                # Log level change in level_history table
+                if new_level > current_level:
+                    try:
+                        level_history_data = {
+                            'relationship_id': relationship_id,
+                            'old_level': current_level,
+                            'new_level': new_level,
+                            'xp_gained': int(xp_gain),
+                            'interaction_id': interaction_data['id']
+                        }
+                        supabase.table('level_history').insert(level_history_data).execute()
+                        
+                        # Generate a milestone quest if the new level is a milestone level
+                        if new_level in [3, 5, 7, 10]:
+                            try:
+                                # Generate milestone quest
+                                milestone_quest_description = generate_milestone_quest(new_level, current_categories, [interaction_log])
+                                
+                                # Create the quest
+                                milestone_quest_data = {
+                                    'relationship_id': relationship_id,
+                                    'quest_description': milestone_quest_description,
+                                    'quest_status': 'pending',
+                                    'milestone_level': new_level
+                                }
+                                
+                                supabase.table('quests').insert(milestone_quest_data).execute()
+                                print(f"Generated milestone quest for level {new_level}")
+                            except Exception as quest_error:
+                                print(f"Error generating milestone quest: {quest_error}")
+                    except Exception as history_error:
+                        print(f"Error logging level history: {history_error}")
 
             # --- Evolution Suggestion is returned, but NOT automatically applied ---
             # The frontend should handle displaying the suggestion and allowing the user
@@ -573,6 +606,242 @@ def get_relationship_interaction_thread(relationship_id):
         interaction_thread_data = [dict(row) for row in interactions_response.data]
         return jsonify(interaction_thread_data), 200
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# --- Quest Endpoints ---
+
+# API endpoint to create a new quest
+@app.route('/quests', methods=['POST'])
+def create_quest():
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    data = request.get_json()
+    if not data or not all(k in data for k in ("relationship_id", "quest_description", "quest_status")):
+        return jsonify({"error": "Missing required fields: relationship_id, quest_description, quest_status"}), 400
+
+    relationship_id = data['relationship_id']
+    quest_description = data['quest_description']
+    quest_status = data['quest_status']
+    milestone_level = data.get('milestone_level')  # Optional
+
+    try:
+        # Insert quest into Supabase 'quests' table
+        response = supabase.table('quests').insert({
+            'relationship_id': relationship_id,
+            'quest_description': quest_description,
+            'quest_status': quest_status,
+            'milestone_level': milestone_level
+        }).execute()
+
+        if hasattr(response, 'error') and response.error:
+            return jsonify({"error": response.error.message}), 500
+
+        quest_data = response.data[0]
+        return jsonify(quest_data), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# API endpoint to get quests for a specific relationship
+@app.route('/relationships/<int:relationship_id>/quests', methods=['GET'])
+def get_relationship_quests(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        response = supabase.table('quests').select("*").eq('relationship_id', relationship_id).execute()
+        if hasattr(response, 'error') and response.error:
+            return jsonify({"error": response.error.message}), 500
+        
+        quests_data = [dict(row) for row in response.data]
+        return jsonify(quests_data), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# API endpoint to get a specific quest by ID
+@app.route('/quests/<int:quest_id>', methods=['GET'])
+def get_quest(quest_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        response = supabase.table('quests').select("*").eq('id', quest_id).execute()
+        if hasattr(response, 'error') and response.error:
+            return jsonify({"error": response.error.message}), 500
+        if not response.data:
+            return jsonify({"error": "Quest not found"}), 404
+        
+        quest_data = dict(response.data[0])
+        return jsonify(quest_data), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# API endpoint to update an existing quest
+@app.route('/quests/<int:quest_id>', methods=['PUT'])
+def update_quest(quest_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided for update"}), 400
+
+    try:
+        # Get the current quest data to check if status is changing
+        quest_response = supabase.table('quests').select("*").eq('id', quest_id).single().execute()
+        if hasattr(quest_response, 'error') and quest_response.error:
+            return jsonify({"error": f"Error fetching quest: {quest_response.error.message}"}), 500
+        
+        current_quest = quest_response.data
+        is_completing_quest = (data.get('quest_status') == 'completed' and current_quest.get('quest_status') != 'completed')
+        
+        # If quest_status is being updated to 'completed', set completion_date
+        if is_completing_quest:
+            data['completion_date'] = datetime.now(timezone.utc).isoformat()
+
+        # Update the quest
+        response = supabase.table('quests').update(data).eq('id', quest_id).execute()
+        if hasattr(response, 'error') and response.error:
+            return jsonify({"error": response.error.message}), 500
+        
+        # If quest is being completed, award XP
+        if is_completing_quest:
+            try:
+                relationship_id = current_quest.get('relationship_id')
+                
+                # Determine XP reward based on quest type
+                xp_reward = 2  # Default XP reward for regular quests
+                
+                # Award more XP for milestone quests
+                if current_quest.get('milestone_level'):
+                    xp_reward = 3  # Higher XP reward for milestone quests
+                
+                # Get current relationship XP and level
+                rel_response = supabase.table('relationships').select("level, xp").eq('id', relationship_id).single().execute()
+                if hasattr(rel_response, 'error') and rel_response.error:
+                    print(f"Error fetching relationship for XP update: {rel_response.error.message}")
+                else:
+                    relationship_data = rel_response.data
+                    current_level = relationship_data.get('level', 1)
+                    current_xp = relationship_data.get('xp', 0)
+                    
+                    # Calculate new XP and level
+                    new_xp = current_xp + xp_reward
+                    new_level = calculate_level(new_xp)
+                    
+                    # Update relationship XP and level
+                    update_data = {'level': new_level, 'xp': new_xp}
+                    update_response = supabase.table('relationships').update(update_data).eq('id', relationship_id).execute()
+                    
+                    if hasattr(update_response, 'error') and update_response.error:
+                        print(f"Error updating relationship XP: {update_response.error.message}")
+                    else:
+                        print(f"Quest completion: Awarded {xp_reward} XP to relationship {relationship_id}")
+                        
+                        # Log level up if applicable
+                        if new_level > current_level:
+                            try:
+                                level_history_data = {
+                                    'relationship_id': relationship_id,
+                                    'old_level': current_level,
+                                    'new_level': new_level,
+                                    'xp_gained': xp_reward,
+                                    'interaction_id': None  # No interaction for quest completion
+                                }
+                                supabase.table('level_history').insert(level_history_data).execute()
+                                print(f"Quest completion triggered level up: {current_level} -> {new_level}")
+                                
+                                # Generate a milestone quest if the new level is a milestone level
+                                if new_level in [3, 5, 7, 10]:
+                                    # Get categories for this relationship
+                                    rc_response = supabase.table('relationship_categories').select("categories(name)").eq('relationship_id', relationship_id).execute()
+                                    if not (hasattr(rc_response, 'error') and rc_response.error):
+                                        categories = [link['categories']['name'] for link in rc_response.data if link.get('categories')]
+                                        
+                                        # Generate milestone quest
+                                        milestone_quest_description = generate_milestone_quest(new_level, categories)
+                                        
+                                        # Create the quest
+                                        milestone_quest_data = {
+                                            'relationship_id': relationship_id,
+                                            'quest_description': milestone_quest_description,
+                                            'quest_status': 'pending',
+                                            'milestone_level': new_level
+                                        }
+                                        
+                                        supabase.table('quests').insert(milestone_quest_data).execute()
+                                        print(f"Generated milestone quest for level {new_level}")
+                            except Exception as history_error:
+                                print(f"Error logging level history after quest completion: {history_error}")
+            except Exception as xp_error:
+                print(f"Error processing XP reward for quest completion: {xp_error}")
+        
+        return jsonify({"message": "Quest updated successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# API endpoint to delete a quest
+@app.route('/quests/<int:quest_id>', methods=['DELETE'])
+def delete_quest(quest_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        response = supabase.table('quests').delete().eq('id', quest_id).execute()
+        if hasattr(response, 'error') and response.error:
+            return jsonify({"error": response.error.message}), 500
+        
+        return jsonify({"message": "Quest deleted successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# API endpoint to generate a quest for a relationship
+@app.route('/relationships/<int:relationship_id>/generate_quest', methods=['POST'])
+def generate_relationship_quest(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Get relationship data
+        rel_response = supabase.table('relationships').select("level").eq('id', relationship_id).single().execute()
+        if hasattr(rel_response, 'error') and rel_response.error:
+            return jsonify({"error": f"Error fetching relationship: {rel_response.error.message}"}), 500
+        
+        # Get categories for this relationship
+        rc_response = supabase.table('relationship_categories').select("categories(name)").eq('relationship_id', relationship_id).execute()
+        if hasattr(rc_response, 'error') and rc_response.error:
+            return jsonify({"error": f"Error fetching categories: {rc_response.error.message}"}), 500
+        
+        # Get recent interactions
+        interactions_response = supabase.table('interactions').select("interaction_log").eq('relationship_id', relationship_id).order('created_at', desc=True).limit(3).execute()
+        
+        # Extract data
+        level = rel_response.data.get('level', 1)
+        categories = [link['categories']['name'] for link in rc_response.data if link.get('categories')]
+        recent_interactions = [interaction['interaction_log'] for interaction in interactions_response.data] if interactions_response.data else []
+        
+        # Generate quest using AI - use milestone-specific generation for milestone levels
+        if level in [3, 5, 7, 10]:
+            quest_description = generate_milestone_quest(level, categories, recent_interactions)
+        else:
+            quest_description = generate_quest(level, categories, recent_interactions)
+        
+        # Create the quest
+        quest_data = {
+            'relationship_id': relationship_id,
+            'quest_description': quest_description,
+            'quest_status': 'pending',
+            'milestone_level': level if level in [3, 5, 7, 10] else None  # Set milestone_level if it's a milestone level
+        }
+        
+        quest_response = supabase.table('quests').insert(quest_data).execute()
+        if hasattr(quest_response, 'error') and quest_response.error:
+            return jsonify({"error": f"Error creating quest: {quest_response.error.message}"}), 500
+        
+        return jsonify(quest_response.data[0]), 201
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

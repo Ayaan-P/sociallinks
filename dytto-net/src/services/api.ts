@@ -5,7 +5,7 @@ import { Interaction, CreateInteractionPayload } from '../types/Interaction';
 import { Quest } from '../types/Quest';
 
 // Define the base URL for the API
-export const API_BASE_URL = 'https://large-poems-march.loca.lt'; // Update this with your actual backend URL
+export const API_BASE_URL = 'https://cuddly-humans-try.loca.lt'; // Update this with your actual backend URL
 
 // Create an axios instance with the base URL
 const api = axios.create({
@@ -319,6 +319,18 @@ export const deleteQuest = async (questId: string | number): Promise<void> => {
     console.log(`[API] Quest ${questId} deleted`);
   } catch (error) {
     handleApiError(error, `/quests/${questId} (DELETE)`);
+    throw error;
+  }
+};
+
+export const generateQuest = async (relationshipId: string | number): Promise<Quest> => {
+  try {
+    console.log(`[API] Generating quest for relationship: ${relationshipId}`);
+    const response = await api.post(`/relationships/${relationshipId}/generate_quest`);
+    console.log(`[API] Quest generated for relationship ${relationshipId}:`, response.data);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, `/relationships/${relationshipId}/generate_quest (POST)`);
     throw error;
   }
 };

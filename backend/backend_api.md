@@ -219,8 +219,9 @@ The base URL for all API endpoints is the root of the backend application (`/`).
         ```json
         {
             "relationship_id": integer,     // Required
-            "quest_description": "string",    // Required
-            "quest_status": "string"        // Required, e.g., "pending", "completed"
+            "quest_description": "string",  // Required
+            "quest_status": "string",       // Required, e.g., "pending", "completed"
+            "milestone_level": integer      // Optional, set for milestone quests (levels 3, 5, 7, 10)
         }
         ```
     *   Response (JSON):
@@ -254,7 +255,8 @@ The base URL for all API endpoints is the root of the backend application (`/`).
         {
             "relationship_id": integer,
             "quest_description": "string",
-            "quest_status": "string"
+            "quest_status": "string",
+            "milestone_level": integer
             // Include any fields you want to update
         }
         ```
@@ -270,6 +272,14 @@ The base URL for all API endpoints is the root of the backend application (`/`).
     *   Response (JSON):
         *   Success (200 OK): Returns a message indicating success.
         *   Error (500 Internal Server Error): Supabase error or other server error.
+
+*   **POST /relationships/\<relationship_id>/generate_quest**
+    *   Description: Generates and creates a new quest for a relationship using AI.
+    *   Path Parameters:
+        *   `relationship_id` (integer): The ID of the relationship.
+    *   Response (JSON):
+        *   Success (201 Created): Returns the newly created quest object with AI-generated quest description.
+        *   Error (500 Internal Server Error): Supabase error, AI processing error, or other server error.
 
 **Note:**
 
