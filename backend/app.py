@@ -910,6 +910,19 @@ def mark_interaction_as_milestone(interaction_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# API endpoint to get tree completion status
+@app.route('/relationships/<int:relationship_id>/tree/completion', methods=['GET'])
+def get_tree_completion_status_endpoint(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Use the tree_system service to get completion status
+        completion_data = get_tree_completion_status(supabase, relationship_id)
+        return jsonify(completion_data), 200
+    except Exception as e:
+        return jsonify({"error": f"Error getting tree completion status: {str(e)}"}), 500
+
 # --- Insights System Endpoints ---
 
 # API endpoint to get all insights for a relationship

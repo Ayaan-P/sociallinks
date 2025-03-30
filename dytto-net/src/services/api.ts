@@ -5,7 +5,7 @@ import { Interaction, CreateInteractionPayload } from '../types/Interaction';
 import { Quest } from '../types/Quest';
 
 // Define the base URL for the API
-export const API_BASE_URL = 'https://young-wombats-rhyme.loca.lt'; // Update this with your actual backend URL
+export const API_BASE_URL = 'https://flat-heads-joke.loca.lt'; // Update this with your actual backend URL
 
 // Create an axios instance with the base URL
 const api = axios.create({
@@ -214,24 +214,100 @@ export const deleteInteraction = async (id: string | number): Promise<void> => {
 
 // Tree System API
 
+export interface TreeLeaf {
+  id: number;
+  summary: string;
+  sentiment: string;
+  date: string;
+  type: string;
+}
+
+export interface TreeBlossom {
+  id: number;
+  description: string;
+  completed_on: string;
+  category: string;
+  milestone_level?: number;
+}
+
+export interface TreeFirefly {
+  category: string;
+  id: number;
+  suggested_by_ai: boolean;
+}
+
+export interface TreeRing {
+  level: number;
+  date_reached?: string;
+  completed: boolean;
+  progress_percentage?: number;
+}
+
+export interface EvolutionHistoryItem {
+  category: string;
+  unlocked_at: string;
+  date: string;
+}
+
 export interface TreeData {
+  person_id: number;
+  name: string;
+  base_category: string;
+  active_categories: string[];
+  level: number;
+  xp: number;
   trunk: string;
   branches: string[];
-  level: number;
-  leaves: {
-    id: number;
-    summary: string;
-    sentiment: string;
-    date: string;
-  }[];
-  buds: string[];
+  rings: TreeRing[];
+  leaves: TreeLeaf[];
+  blossoms: TreeBlossom[];
+  fireflies: TreeFirefly[];
+  evolution_history: EvolutionHistoryItem[];
+  relationship_age_days: number;
+  is_complete: boolean;
+}
+
+export interface EvolutionSuggestion {
+  category: string;
+  date_suggested: string;
+  sentiment_context: string;
+}
+
+export interface EvolutionTrigger {
+  type: string;
+  description: string;
+  unlocks: string;
+  milestone?: number;
 }
 
 export interface TreeEvolutionData {
   current_level: number;
+  current_xp: number;
   current_categories: string[];
-  suggested_categories: string[];
+  suggested_categories: EvolutionSuggestion[];
+  evolution_triggers: EvolutionTrigger[];
   can_evolve: boolean;
+  max_categories_reached: boolean;
+  next_evolution_level: number;
+}
+
+export interface TreeCompletionReward {
+  type: string;
+  title: string;
+  description: string;
+  unlocked: boolean;
+}
+
+export interface TreeCompletionData {
+  is_complete: boolean;
+  level: number;
+  name: string;
+  total_interactions?: number;
+  completed_quests?: number;
+  categories?: string[];
+  completion_percentage: number;
+  completion_rewards: TreeCompletionReward[];
+  can_export: boolean;
 }
 
 export const getRelationshipTree = async (relationshipId: string | number): Promise<TreeData> => {
@@ -265,6 +341,18 @@ export const markInteractionAsMilestone = async (interactionId: string | number)
     console.log(`[API] Interaction ${interactionId} marked as milestone`);
   } catch (error) {
     handleApiError(error, `/interactions/${interactionId}/milestone (PUT)`);
+    throw error;
+  }
+};
+
+export const getTreeCompletionStatus = async (relationshipId: string | number): Promise<TreeCompletionData> => {
+  try {
+    console.log(`[API] Fetching tree completion status for relationship: ${relationshipId}`);
+    const response = await api.get(`/relationships/${relationshipId}/tree/completion`);
+    console.log(`[API] Tree completion status for relationship ${relationshipId} fetched`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, `/relationships/${relationshipId}/tree/completion`);
     throw error;
   }
 };
