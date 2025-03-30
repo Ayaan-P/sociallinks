@@ -5,6 +5,7 @@ from supabase import create_client, Client
 from services.ai_processing import analyze_sentiment, calculate_xp, get_relationship_level, update_relationship_level, process_interaction_log_ai, detect_patterns, suggest_evolution, suggest_interaction
 from services.quest_generation import generate_quest, generate_milestone_quest, generate_recurring_quest
 from services.leveling_system import calculate_level, get_xp_progress_in_level # Import the new leveling functions
+from services.tree_system import get_relationship_tree_data, suggest_tree_evolution # Import tree system functions
 from datetime import datetime, timezone
 
 # Load environment variables from .env file
@@ -800,6 +801,94 @@ def delete_quest(quest_id):
 # API endpoint to generate a quest for a relationship
 @app.route('/relationships/<int:relationship_id>/generate_quest', methods=['POST'])
 def generate_relationship_quest(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Get relationship data
+        rel_response = supabase.table('relationships').select("level").eq('id', relationship_id).single().execute()
+        if hasattr(rel_response, 'error') and rel_response.error:
+            return jsonify({"error": f"Error fetching relationship: {rel_response.error.message}"}), 500
+        
+        # Get categories for this relationship
+        rc_response = supabase.table('relationship_categories').select("categories(name)").eq('relationship_id', relationship_id).execute()
+        if hasattr(rc_response, 'error') and rc_response.error:
+            return jsonify({"error": f"Error fetching categories: {rc_response.error.message}"}), 500
+        
+        # Get recent interactions
+        interactions_response = supabase.table('interactions').select("interaction_log").eq('relationship_id', relationship_id).order('created_at', desc=True).limit(3).execute()
+        
+        # Extract data
+        level = rel_response.data.get('level', 1)
+        categories = [link['categories']['name'] for link in rc_response.data if link.get('categories')]
+        recent_interactions = [interaction['interaction_log'] for interaction in interactions_response.data] if interactions_response.data else []
+        
+        # Generate quest using AI - use milestone-specific generation for milestone levels
+        if level in [3, 5, 7, 10]:
+            quest_description = generate_milestone_quest(level, categories, recent_interactions)
+        else:
+            quest_description = generate_quest(level, categories, recent_interactions)
+        
+        # Create the quest
+        quest_data = {
+            'relationship_id': relationship_id,
+            'quest_description': quest_description,
+            'quest_status': 'pending',
+            'milestone_level': level if level in [3, 5, 7, 10] else None  # Set milestone_level if it's a milestone level
+        }
+        
+        quest_response = supabase.table('quests').insert(quest_data).execute()
+        if hasattr(quest_response, 'error') and quest_response.error:
+            return jsonify({"error": f"Error creating quest: {quest_response.error.message}"}), 500
+        
+        return jsonify(quest_response.data[0]), 201
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# --- Tree System Endpoints ---
+
+# API endpoint to get relationship tree data
+@app.route('/relationships/<int:relationship_id>/tree', methods=['GET'])
+def get_relationship_tree(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Use the tree_system service to generate tree data
+        tree_data = get_relationship_tree_data(supabase, relationship_id)
+        return jsonify(tree_data), 200
+    except Exception as e:
+        return jsonify({"error": f"Error generating tree data: {str(e)}"}), 500
+
+# API endpoint to get tree evolution suggestions
+@app.route('/relationships/<int:relationship_id>/tree/evolution', methods=['GET'])
+def get_tree_evolution_suggestions(relationship_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Use the tree_system service to get evolution suggestions
+        evolution_data = suggest_tree_evolution(supabase, relationship_id)
+        return jsonify(evolution_data), 200
+    except Exception as e:
+        return jsonify({"error": f"Error generating evolution suggestions: {str(e)}"}), 500
+
+# API endpoint to mark an interaction as a milestone (leaf on the tree)
+@app.route('/interactions/<int:interaction_id>/milestone', methods=['PUT'])
+def mark_interaction_as_milestone(interaction_id):
+    if not supabase:
+        return jsonify({"error": "Supabase is not initialized."}), 500
+
+    try:
+        # Update the interaction to mark it as a milestone
+        response = supabase.table('interactions').update({'is_milestone': True}).eq('id', interaction_id).execute()
+        if hasattr(response, 'error') and response.error:
+            return jsonify({"error": f"Error marking interaction as milestone: {response.error.message}"}), 500
+        
+        return jsonify({"message": "Interaction marked as milestone successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     if not supabase:
         return jsonify({"error": "Supabase is not initialized."}), 500
 

@@ -5,7 +5,7 @@ import { Interaction, CreateInteractionPayload } from '../types/Interaction';
 import { Quest } from '../types/Quest';
 
 // Define the base URL for the API
-export const API_BASE_URL = 'https://salty-moles-clap.loca.lt'; // Update this with your actual backend URL
+export const API_BASE_URL = 'https://legal-waves-juggle.loca.lt'; // Update this with your actual backend URL
 
 // Create an axios instance with the base URL
 const api = axios.create({
@@ -208,6 +208,63 @@ export const deleteInteraction = async (id: string | number): Promise<void> => {
     console.log(`[API] Interaction ${id} deleted`);
   } catch (error) {
     handleApiError(error, `/interactions/${id} (DELETE)`);
+    throw error;
+  }
+};
+
+// Tree System API
+
+export interface TreeData {
+  trunk: string;
+  branches: string[];
+  level: number;
+  leaves: {
+    id: number;
+    summary: string;
+    sentiment: string;
+    date: string;
+  }[];
+  buds: string[];
+}
+
+export interface TreeEvolutionData {
+  current_level: number;
+  current_categories: string[];
+  suggested_categories: string[];
+  can_evolve: boolean;
+}
+
+export const getRelationshipTree = async (relationshipId: string | number): Promise<TreeData> => {
+  try {
+    console.log(`[API] Fetching tree data for relationship: ${relationshipId}`);
+    const response = await api.get(`/relationships/${relationshipId}/tree`);
+    console.log(`[API] Tree data for relationship ${relationshipId} fetched`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, `/relationships/${relationshipId}/tree`);
+    throw error;
+  }
+};
+
+export const getTreeEvolutionSuggestions = async (relationshipId: string | number): Promise<TreeEvolutionData> => {
+  try {
+    console.log(`[API] Fetching tree evolution suggestions for relationship: ${relationshipId}`);
+    const response = await api.get(`/relationships/${relationshipId}/tree/evolution`);
+    console.log(`[API] Tree evolution suggestions for relationship ${relationshipId} fetched`);
+    return response.data;
+  } catch (error) {
+    handleApiError(error, `/relationships/${relationshipId}/tree/evolution`);
+    throw error;
+  }
+};
+
+export const markInteractionAsMilestone = async (interactionId: string | number): Promise<void> => {
+  try {
+    console.log(`[API] Marking interaction ${interactionId} as milestone`);
+    await api.put(`/interactions/${interactionId}/milestone`);
+    console.log(`[API] Interaction ${interactionId} marked as milestone`);
+  } catch (error) {
+    handleApiError(error, `/interactions/${interactionId}/milestone (PUT)`);
     throw error;
   }
 };

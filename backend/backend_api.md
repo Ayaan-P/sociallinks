@@ -281,6 +281,59 @@ The base URL for all API endpoints is the root of the backend application (`/`).
         *   Success (201 Created): Returns the newly created quest object with AI-generated quest description.
         *   Error (500 Internal Server Error): Supabase error, AI processing error, or other server error.
 
+### Tree System
+
+*   **GET /relationships/\<relationship_id>/tree**
+    *   Description: Retrieves tree data for a specific relationship, including trunk, branches, rings, leaves, and buds.
+    *   Path Parameters:
+        *   `relationship_id` (integer): The ID of the relationship.
+    *   Response (JSON):
+        ```json
+        {
+            "trunk": "string",                // Primary category (e.g., "Friend")
+            "branches": ["string", "string"], // Evolved categories (e.g., ["Business", "Mentor"])
+            "level": integer,                 // Current relationship level (1-10)
+            "leaves": [                       // Milestone interactions (memories)
+                {
+                    "id": integer,
+                    "summary": "string",      // Short summary of the interaction
+                    "sentiment": "string",    // Sentiment analysis of the interaction
+                    "date": "timestamp"
+                }
+            ],
+            "buds": ["string", "string"]      // Potential categories that could evolve
+        }
+        ```
+        *   Success (200 OK): Returns the tree data structure.
+        *   Error (404 Not Found): Relationship not found.
+        *   Error (500 Internal Server Error): Supabase error or other server error.
+
+*   **GET /relationships/\<relationship_id>/tree/evolution**
+    *   Description: Retrieves evolution suggestions for a relationship's tree.
+    *   Path Parameters:
+        *   `relationship_id` (integer): The ID of the relationship.
+    *   Response (JSON):
+        ```json
+        {
+            "current_level": integer,
+            "current_categories": ["string", "string"],
+            "suggested_categories": ["string", "string"],
+            "can_evolve": boolean            // Whether the relationship meets criteria for evolution
+        }
+        ```
+        *   Success (200 OK): Returns the evolution suggestions.
+        *   Error (404 Not Found): Relationship not found.
+        *   Error (500 Internal Server Error): Supabase error or other server error.
+
+*   **PUT /interactions/\<interaction_id>/milestone**
+    *   Description: Marks an interaction as a milestone, which will appear as a leaf on the relationship tree.
+    *   Path Parameters:
+        *   `interaction_id` (integer): The ID of the interaction to mark as a milestone.
+    *   Response (JSON):
+        *   Success (200 OK): Returns a message indicating success.
+        *   Error (404 Not Found): Interaction not found.
+        *   Error (500 Internal Server Error): Supabase error or other server error.
+
 **Note:**
 
 *   All endpoints return JSON responses.

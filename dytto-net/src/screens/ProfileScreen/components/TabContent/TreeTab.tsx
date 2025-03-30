@@ -1,46 +1,42 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Theme } from '../../../../types/theme';
-import TreeNode from '../TreeNode';
-
-interface TreeData {
-  id: number;
-  label: string;
-  level: number;
-  active: boolean;
-  locked: boolean;
-}
+import RelationshipTree from '../RelationshipTree';
 
 interface TreeTabProps {
-  treeData: TreeData[];
+  relationshipId: number;
   theme: Theme;
 }
 
 const TreeTab: React.FC<TreeTabProps> = ({
-  treeData,
+  relationshipId,
   theme
 }) => {
+  const [error, setError] = useState<string | null>(null);
   const styles = createStyles(theme);
+
+  const handleError = (err: Error) => {
+    console.error('Tree error:', err);
+    setError(err.message);
+  };
 
   return (
     <View style={styles.treeViewSection}>
-      <Text style={styles.sectionTitle}>Relationship Categories</Text>
       <Text style={styles.description}>
         Categories evolve as your relationship grows. Unlock new branches by logging meaningful interactions.
       </Text>
 
-      <View style={styles.treeContainer}>
-        {treeData.map(node => (
-          <TreeNode
-            key={node.id}
-            label={node.label}
-            level={node.level}
-            active={node.active}
-            locked={node.locked}
-            theme={theme}
-          />
-        ))}
-      </View>
+      {error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : (
+        <RelationshipTree 
+          relationshipId={relationshipId}
+          theme={theme}
+          onError={handleError}
+        />
+      )}
     </View>
   );
 };
@@ -50,22 +46,18 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     paddingHorizontal: theme.spacing.lg,
     marginBottom: theme.spacing.lg,
   },
-  sectionTitle: {
-    fontSize: theme.typography.h4.fontSize,
-    fontWeight: theme.typography.h4.fontWeight,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
-  },
   description: {
     color: theme.colors.textSecondary,
     marginBottom: theme.spacing.md,
   },
-  treeContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginTop: theme.spacing.sm,
+  errorContainer: {
+    padding: theme.spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  errorText: {
+    color: theme.colors.error,
+  }
 });
 
 export default TreeTab;

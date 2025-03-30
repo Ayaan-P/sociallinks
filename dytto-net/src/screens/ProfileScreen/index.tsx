@@ -374,7 +374,7 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
 
         {activeTab === 'Tree' && (
           <TreeTab
-            treeData={treeData}
+            relationshipId={Number(personId)}
             theme={theme}
           />
         )}
