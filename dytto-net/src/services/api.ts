@@ -6,7 +6,7 @@ import { Quest } from '../types/Quest';
 import { GlobalTreeData } from '../types/GlobalTree'; // Import Global Tree types
 
 // Define the base URL for the API
-export const API_BASE_URL = 'https://clean-numbers-doubt.loca.lt'; // Update this with your actual backend URL
+export const API_BASE_URL = 'http://dytto-net-env.eba-hkgapfkb.ap-south-1.elasticbeanstalk.com/'; // Update this with your actual backend URL
 
 // Create an axios instance with the base URL
 const api = axios.create({

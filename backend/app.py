@@ -768,7 +768,8 @@ def get_global_tree_data_endpoint():
         return jsonify({"error": f"Failed to generate global tree data: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    # Run the Flask app
-    # Use debug=True for development, allows auto-reloading
-    # Use port 5001 to avoid potential conflicts with other services
-    app.run(debug=True, port=5001)
+    # Get port from environment variable for Elastic Beanstalk
+    port = int(os.environ.get('PORT', 5000))
+    # In production, debug should be False
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    app.run(host='0.0.0.0', port=port, debug=debug)
