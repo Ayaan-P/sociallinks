@@ -6,7 +6,7 @@ import { Quest } from '../types/Quest';
 import { GlobalTreeData } from '../types/GlobalTree'; // Import Global Tree types
 
 // Define the base URL for the API
-export const API_BASE_URL = 'https://huge-maps-brush.loca.lt'; // Update this with your actual backend URL
+export const API_BASE_URL = 'https://clean-numbers-doubt.loca.lt'; // Update this with your actual backend URL
 
 // Create an axios instance with the base URL
 const api = axios.create({
@@ -125,9 +125,30 @@ export const updateRelationship = async (
 ): Promise<void> => {
   try {
     console.log(`[API] Updating relationship ${id}:`, relationshipData);
-    await api.put(`/relationships/${id}`, relationshipData);
-    console.log(`[API] Relationship ${id} updated`);
+    
+    // Log categories if they're being updated
+    if (relationshipData.categories) {
+      console.log(`[API] Updating categories to:`, relationshipData.categories);
+    }
+    
+    // Use a longer timeout for this specific request (30 seconds instead of 10)
+    const response = await axios.put(`${API_BASE_URL}/relationships/${id}`, relationshipData, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000, // 30 second timeout for relationship updates
+    });
+    
+    console.log(`[API] Relationship ${id} updated successfully:`, response.status);
   } catch (error) {
+    console.error('[API] Detailed error:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('[API] Response data:', error.response.data);
+      console.error('[API] Response status:', error.response.status);
+      console.error('[API] Response headers:', error.response.headers);
+    } else if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
+      console.error('[API] Request timed out. The server might be processing the update but not responding in time.');
+    }
     handleApiError(error, `/relationships/${id} (PUT)`);
     throw error;
   }
@@ -186,10 +207,21 @@ export const getRelationshipInteractions = async (relationshipId: string | numbe
 export const createInteraction = async (interactionData: CreateInteractionPayload): Promise<Interaction> => {
   try {
     console.log('[API] Creating interaction for relationship:', interactionData.relationship_id);
-    const response = await api.post('/interactions', interactionData);
+    // Use a longer timeout for this endpoint since it may involve AI processing
+    const response = await axios.post(`${API_BASE_URL}/interactions`, interactionData, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000, // 30 second timeout for interaction creation
+    });
     console.log('[API] Interaction created:', response.data);
     return response.data;
   } catch (error) {
+    // If it's a timeout error, provide a more specific error message
+    if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
+      console.error('[API] Interaction creation request timed out');
+      throw new Error('The interaction is taking longer than expected to process. Please try again later.');
+    }
     handleApiError(error, '/interactions (POST)');
     throw error;
   }

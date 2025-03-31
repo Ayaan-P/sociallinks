@@ -7,6 +7,7 @@ import { StyleSheet } from 'react-native';
 // Import the actual screens
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddPersonScreen from './src/screens/AddPersonScreen';
+import EditPersonScreen from './src/screens/EditPersonScreen'; // Import the EditPerson screen
 import LogInteractionScreen from './src/screens/LogInteractionScreen';
 import ProfileScreen from './src/screens/ProfileScreen/index';
 import GlobalTreeScreen from './src/screens/GlobalTreeScreen'; // Import the new screen
@@ -17,6 +18,7 @@ import { ThemeProvider, useTheme } from './src/context/ThemeContext'; // Import 
 export type RootStackParamList = {
   Dashboard: undefined;
   AddPerson: undefined;
+  EditPerson: { personId: string }; // Edit person screen requires a personId
   LogInteraction: { personId?: string; personName?: string };
   Profile: { personId: string }; // Profile screen requires a personId
   GlobalTree: undefined; // Add GlobalTree screen
@@ -60,13 +62,14 @@ const AppNavigator: React.FC = () => {
         {/* Apply common header styles via screenOptions, specific titles per screen */}
         <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'dytto - net' }} />
         <Stack.Screen name="AddPerson" component={AddPersonScreen} options={{ title: 'Add New Person' }} />
-         <Stack.Screen name="LogInteraction" component={LogInteractionScreen} options={{ title: 'Log Interaction' }} />
-         {/* Profile screen title is set dynamically within the component */}
-         <Stack.Screen name="Profile" component={ProfileScreen} />
-         {/* Add the Global Tree screen */}
-         <Stack.Screen name="GlobalTree" component={GlobalTreeScreen} options={{ title: 'Global Tree' }} />
-       </Stack.Navigator>
-       <StatusBar style={theme.isDark ? 'light' : 'dark'} />
+        <Stack.Screen name="EditPerson" component={EditPersonScreen} options={{ title: 'Edit Person' }} />
+        <Stack.Screen name="LogInteraction" component={LogInteractionScreen} options={{ title: 'Log Interaction' }} />
+        {/* Profile screen title is set dynamically within the component */}
+        <Stack.Screen name="Profile" component={ProfileScreen} />
+        {/* Add the Global Tree screen */}
+        <Stack.Screen name="GlobalTree" component={GlobalTreeScreen} options={{ title: 'Global Tree' }} />
+      </Stack.Navigator>
+      <StatusBar style={theme.isDark ? 'light' : 'dark'} />
     </NavigationContainer>
   );
 }

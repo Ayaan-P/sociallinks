@@ -79,18 +79,40 @@ const RelationshipCard: React.FC<RelationshipCardProps> = ({
           theme={theme}
         />
 
-        {/* Categories - Use item.categories array */}
+        {/* Categories and Tags */}
         <View style={styles.categoriesContainer}>
+          {/* Display Categories */}
           {item.categories && item.categories
             .filter((category, index, self) => self.indexOf(category) === index) // Remove duplicates if any
             .map((category, index) => (
               <CategoryTag
-                key={index}
+                key={`category-${index}`}
                 label={category}
                 theme={theme}
+                type="category"
               />
             ))
           }
+          
+          {/* Display Tags (if any) */}
+          {item.tags && item.tags.length > 0 && (
+            <View style={styles.tagsContainer}>
+              {item.tags
+                .filter((tag, index) => index < 2) // Limit to first 2 tags to avoid clutter
+                .map((tag, index) => (
+                  <CategoryTag
+                    key={`tag-${index}`}
+                    label={tag}
+                    theme={theme}
+                    type="tag"
+                  />
+                ))
+              }
+              {item.tags.length > 2 && (
+                <Text style={styles.moreTagsText}>+{item.tags.length - 2} more</Text>
+              )}
+            </View>
+          )}
         </View>
       </View>
     </TouchableOpacity>
@@ -188,9 +210,18 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     fontWeight: '500',
   },
   categoriesContainer: {
+    marginTop: theme.spacing.xs,
+  },
+  tagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: theme.spacing.xs,
+    marginTop: theme.spacing.xs / 2,
+  },
+  moreTagsText: {
+    fontSize: 10,
+    color: theme.colors.textSecondary,
+    marginLeft: theme.spacing.xs,
+    alignSelf: 'center',
   },
 });
 

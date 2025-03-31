@@ -152,39 +152,80 @@ def update_relationship(relationship_id):
     data = request.get_json()
     if not data: return jsonify({"error": "No data provided for update"}), 400
 
+    # Log the incoming data for debugging
+    print(f"Updating relationship {relationship_id} with data: {data}")
+    
+    # Extract categories before other updates
     category_names_to_set = data.pop('categories', None)
     relationship_updates = data
 
     try:
+        # Step 1: Update relationship fields
         if relationship_updates:
+            print(f"Updating relationship fields for {relationship_id}: {relationship_updates}")
             update_response = supabase.table('relationships').update(relationship_updates).eq('id', relationship_id).execute()
-            if hasattr(update_response, 'error') and update_response.error: return jsonify({"error": f"Error updating relationship fields: {update_response.error.message}"}), 500
+            if hasattr(update_response, 'error') and update_response.error: 
+                print(f"Error updating relationship fields: {update_response.error.message}")
+                return jsonify({"error": f"Error updating relationship fields: {update_response.error.message}"}), 500
+            print(f"Successfully updated relationship fields for {relationship_id}")
 
+        # Step 2: Handle categories if provided
         if category_names_to_set is not None:
-             cat_ids = []
-             if category_names_to_set:
-                 cat_response = supabase.table('categories').select('id, name').in_('name', category_names_to_set).execute()
-                 if hasattr(cat_response, 'error') and cat_response.error: return jsonify({"error": f"Error finding category IDs: {cat_response.error.message}"}), 500
-                 found_cats = {cat['name']: cat['id'] for cat in cat_response.data}
-                 if len(found_cats) != len(category_names_to_set):
-                      missing = [name for name in category_names_to_set if name not in found_cats]
-                      return jsonify({"error": f"Could not find categories: {', '.join(missing)}"}), 400
-                 cat_ids = list(found_cats.values())
-
-             del_response = supabase.table('relationship_categories').delete().eq('relationship_id', relationship_id).execute()
-             if hasattr(del_response, 'error') and del_response.error: return jsonify({"error": f"Error clearing existing categories: {del_response.error.message}"}), 500
-
-             if cat_ids:
-                 rows_to_insert = [{'relationship_id': relationship_id, 'category_id': cat_id} for cat_id in cat_ids]
-                 ins_response = supabase.table('relationship_categories').insert(rows_to_insert).execute()
-                 if hasattr(ins_response, 'error') and ins_response.error: return jsonify({"error": f"Error inserting new categories: {ins_response.error.message}"}), 500
-                 else:
-                     history_rows = [{'relationship_id': relationship_id, 'category_id': cat_id, 'change_type': 'added', 'user_confirmed': True} for cat_id in cat_ids]
-                     if history_rows:
-                         hist_response = supabase.table('category_history').insert(history_rows).execute()
-                         if hasattr(hist_response, 'error') and hist_response.error: print(f"Error logging category changes to history: {hist_response.error.message}")
-        return jsonify({"message": "Relationship updated successfully"}), 200
-    except Exception as e: return jsonify({"error": str(e)}), 500
+            print(f"Updating categories for relationship {relationship_id}: {category_names_to_set}")
+            cat_ids = []
+            
+            # Only look up categories if there are any to set
+            if category_names_to_set:
+                print(f"Looking up category IDs for: {category_names_to_set}")
+                cat_response = supabase.table('categories').select('id, name').in_('name', category_names_to_set).execute()
+                if hasattr(cat_response, 'error') and cat_response.error: 
+                    print(f"Error finding category IDs: {cat_response.error.message}")
+                    return jsonify({"error": f"Error finding category IDs: {cat_response.error.message}"}), 500
+                
+                found_cats = {cat['name']: cat['id'] for cat in cat_response.data}
+                print(f"Found categories: {found_cats}")
+                
+                if len(found_cats) != len(category_names_to_set):
+                    missing = [name for name in category_names_to_set if name not in found_cats]
+                    print(f"Missing categories: {missing}")
+                    return jsonify({"error": f"Could not find categories: {', '.join(missing)}"}), 400
+                
+                cat_ids = list(found_cats.values())
+            
+            # Delete existing categories
+            print(f"Deleting existing categories for relationship {relationship_id}")
+            del_response = supabase.table('relationship_categories').delete().eq('relationship_id', relationship_id).execute()
+            if hasattr(del_response, 'error') and del_response.error: 
+                print(f"Error clearing existing categories: {del_response.error.message}")
+                return jsonify({"error": f"Error clearing existing categories: {del_response.error.message}"}), 500
+            
+            # Insert new categories if any
+            if cat_ids:
+                print(f"Inserting new categories for relationship {relationship_id}: {cat_ids}")
+                rows_to_insert = [{'relationship_id': relationship_id, 'category_id': cat_id} for cat_id in cat_ids]
+                ins_response = supabase.table('relationship_categories').insert(rows_to_insert).execute()
+                if hasattr(ins_response, 'error') and ins_response.error: 
+                    print(f"Error inserting new categories: {ins_response.error.message}")
+                    return jsonify({"error": f"Error inserting new categories: {ins_response.error.message}"}), 500
+                
+                # Log category changes to history
+                try:
+                    history_rows = [{'relationship_id': relationship_id, 'category_id': cat_id, 'change_type': 'added', 'user_confirmed': True} for cat_id in cat_ids]
+                    if history_rows:
+                        hist_response = supabase.table('category_history').insert(history_rows).execute()
+                        if hasattr(hist_response, 'error') and hist_response.error: 
+                            print(f"Error logging category changes to history: {hist_response.error.message}")
+                except Exception as hist_error:
+                    print(f"Non-critical error logging category history: {str(hist_error)}")
+            
+            print(f"Category update completed for relationship {relationship_id}")
+        
+        # Return success response
+        print(f"Relationship {relationship_id} updated successfully")
+        return jsonify({"message": "Relationship updated successfully", "relationship_id": relationship_id}), 200
+    except Exception as e: 
+        print(f"Exception in update_relationship: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/relationships/<int:relationship_id>', methods=['DELETE'])
 def delete_relationship(relationship_id):

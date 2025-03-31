@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ScrollView, TouchableOpacity, FlatList } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Alert, ScrollView, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
 import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../../App'; // Import the param list type
-import { useTheme } from '../context/ThemeContext'; // Import useTheme
-import { Theme } from '../types/theme'; // Import Theme type
-import { createRelationship, updateRelationship } from '../services/api'; // Import API services
-import { CreateRelationshipPayload } from '../types/Relationship'; // Import payload type
+import { RouteProp } from '@react-navigation/native';
+import { RootStackParamList } from '../../App';
+import { useTheme } from '../context/ThemeContext';
+import { Theme } from '../types/theme';
+import { getRelationship, updateRelationship } from '../services/api';
+import { UpdateRelationshipPayload } from '../types/Relationship';
 
-// Define navigation props type using the RootStackParamList
-type AddPersonScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AddPerson'>;
+// Define navigation and route props types
+type EditPersonScreenNavigationProp = StackNavigationProp<RootStackParamList, 'EditPerson'>;
+type EditPersonScreenRouteProp = RouteProp<RootStackParamList, 'EditPerson'>;
 
 interface Props {
-  navigation: AddPersonScreenNavigationProp;
+  navigation: EditPersonScreenNavigationProp;
+  route: EditPersonScreenRouteProp;
 }
 
 // Mock function for image picker - replace with actual library later
@@ -21,10 +24,12 @@ const pickImage = async (): Promise<string | undefined> => {
   return undefined;
 };
 
-const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
-  const { theme } = useTheme(); // Use theme context
-  const styles = themedStyles(theme); // Generate themed styles
+const EditPersonScreen: React.FC<Props> = ({ navigation, route }) => {
+  const { personId } = route.params;
+  const { theme } = useTheme();
+  const styles = themedStyles(theme);
 
+  // State for form fields
   const [name, setName] = useState('');
   const [bio, setBio] = useState('');
   const [birthday, setBirthday] = useState('');
@@ -41,6 +46,77 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
   const [activeTagCategory, setActiveTagCategory] = useState('custom');
+  
+  // Loading state
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Collapsible sections state
+  const [showAdditionalInfo, setShowAdditionalInfo] = useState(false);
+  const [showContactInfo, setShowContactInfo] = useState(false);
+
+  // Predefined tag categories with suggestions
+  const tagCategories = {
+    interests: ['Sports', 'Music', 'Art', 'Travel', 'Food', 'Technology', 'Reading', 'Movies', 'Gaming', 'Fitness'],
+    traits: ['Funny', 'Kind', 'Ambitious', 'Creative', 'Reliable', 'Thoughtful', 'Organized', 'Adventurous'],
+    contexts: ['Work', 'School', 'Neighbor', 'Childhood', 'Online', 'Mutual Friend', 'Event', 'Group'],
+    dynamics: ['Mentor', 'Mentee', 'Collaborator', 'Support', 'Accountability', 'Inspiration'],
+    custom: []
+  };
+
+  // Fetch relationship data when component mounts
+  useEffect(() => {
+    const fetchRelationshipData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const relationshipData = await getRelationship(personId);
+        
+        // Set form fields with existing data
+        setName(relationshipData.name || '');
+        setBio(relationshipData.bio || '');
+        setBirthday(relationshipData.birthday || '');
+        setPhone(relationshipData.phone || '');
+        setEmail(relationshipData.email || '');
+        setLocation(relationshipData.location || '');
+        setPreferredCommunication(relationshipData.preferred_communication || '');
+        setMeetingFrequency(relationshipData.meeting_frequency || '');
+        setNotes(relationshipData.notes || '');
+        setPhotoUri(relationshipData.photo_url);
+        setSelectedCategories(relationshipData.categories || ['Friend']);
+        setRelationshipType(relationshipData.relationship_type || 'personal');
+        setReminderInterval(relationshipData.reminder_interval || 'weekly');
+        setTags(relationshipData.tags || []);
+        
+        // Expand sections if they have data
+        if (
+          relationshipData.birthday || 
+          relationshipData.location || 
+          relationshipData.meeting_frequency || 
+          relationshipData.notes
+        ) {
+          setShowAdditionalInfo(true);
+        }
+        
+        if (
+          relationshipData.phone || 
+          relationshipData.email || 
+          relationshipData.preferred_communication
+        ) {
+          setShowContactInfo(true);
+        }
+        
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching relationship data:', err);
+        setError('Failed to load relationship data. Please try again.');
+        setLoading(false);
+      }
+    };
+    
+    fetchRelationshipData();
+  }, [personId]);
 
   const handleChoosePhoto = async () => {
     const uri = await pickImage();
@@ -63,15 +139,6 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
     setTags(tags.filter(tag => tag !== tagToRemove));
   };
 
-  // Predefined tag categories with suggestions
-  const tagCategories = {
-    interests: ['Sports', 'Music', 'Art', 'Travel', 'Food', 'Technology', 'Reading', 'Movies', 'Gaming', 'Fitness'],
-    traits: ['Funny', 'Kind', 'Ambitious', 'Creative', 'Reliable', 'Thoughtful', 'Organized', 'Adventurous'],
-    contexts: ['Work', 'School', 'Neighbor', 'Childhood', 'Online', 'Mutual Friend', 'Event', 'Group'],
-    dynamics: ['Mentor', 'Mentee', 'Collaborator', 'Support', 'Accountability', 'Inspiration'],
-    custom: []
-  };
-
   const handleSubmit = async () => {
     if (!name || selectedCategories.length === 0 || !relationshipType || !reminderInterval) {
       Alert.alert('Error', 'Please fill in all required fields.');
@@ -79,8 +146,8 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
     }
     
     try {
-      // Create relationship data using the specific payload type
-      const relationshipData: CreateRelationshipPayload = {
+      // Create update payload
+      const updateData: UpdateRelationshipPayload = {
         name,
         bio,
         birthday: birthday || undefined,
@@ -92,40 +159,43 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
         notes: notes || undefined,
         relationship_type: relationshipType,
         reminder_interval: reminderInterval,
-        initial_category_name: selectedCategories[0], // Use the first selected category as the initial one
         photo_url: photoUri,
-        tags: tags
+        tags,
+        categories: selectedCategories
       };
 
-      console.log('Submitting new person to API:', relationshipData);
+      console.log('Updating person:', updateData);
       
-      // Call the API to create the relationship
-      const newRelationship = await createRelationship(relationshipData);
+      // Call the API to update the relationship
+      await updateRelationship(personId, updateData);
       
-      // If we selected multiple categories, update the relationship with all categories
-      if (selectedCategories.length > 1) {
-        try {
-          await updateRelationship(newRelationship.id, {
-            categories: selectedCategories
-          });
-          console.log(`Updated relationship ${newRelationship.id} with all selected categories:`, selectedCategories);
-        } catch (updateError) {
-          console.error('Error updating relationship with additional categories:', updateError);
-          // Continue with success message even if category update fails
-        }
-      }
-      
-      Alert.alert('Success', `Link created for ${name}.`);
+      Alert.alert('Success', `${name} updated successfully.`);
       navigation.goBack();
     } catch (error) {
-      console.error('Error adding person:', error);
-      Alert.alert('Error', 'Failed to add person. Please try again.');
+      console.error('Error updating person:', error);
+      Alert.alert('Error', 'Failed to update person. Please try again.');
     }
   };
 
-  // State for collapsible sections
-  const [showAdditionalInfo, setShowAdditionalInfo] = useState(false);
-  const [showContactInfo, setShowContactInfo] = useState(false);
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={styles.loadingText}>Loading relationship data...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.retryButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -276,8 +346,8 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
         <Text style={styles.helperText}>Select one or more categories that describe this relationship</Text>
         <View style={styles.optionsContainer}>
           {[
-            'Friend', 'Family', 'Business', 'Acquaintance', 'Romantic', 
-            'Mentor', 'Colleague', 'Neighbor', 'Classmate', 'Community'
+            'Friend', 'Family', 'Business', 'Acquaintance', 'Romantic', 'Colleague', 'Neighbor', 'Classmate', 'Community',  
+            'Mentor', 'Intellectual Peer', 'Emotional Support'
           ].map(category => (
             <TouchableOpacity
               key={category}
@@ -485,7 +555,7 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
         style={styles.submitButton} 
         onPress={handleSubmit}
       >
-        <Text style={styles.submitButtonText}>Add Person</Text>
+        <Text style={styles.submitButtonText}>Save Changes</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -493,6 +563,37 @@ const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
 
 // Function to generate themed styles
 const themedStyles = (theme: Theme) => StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.background,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: theme.spacing.md,
+    color: theme.colors.text,
+    fontSize: theme.typography.body.fontSize,
+  },
+  errorText: {
+    color: theme.colors.error,
+    fontSize: theme.typography.body.fontSize,
+    marginBottom: theme.spacing.md,
+    textAlign: 'center',
+    padding: theme.spacing.md,
+  },
+  retryButton: {
+    backgroundColor: theme.colors.primary,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderRadius: 5,
+  },
+  retryButtonText: {
+    color: theme.colors.background,
+    fontWeight: 'bold',
+  },
   helperText: {
     fontSize: theme.typography.caption.fontSize,
     color: theme.colors.textSecondary,
@@ -525,11 +626,6 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     textAlignVertical: 'top',
     paddingTop: 10,
   },
-  container: {
-    flex: 1,
-    padding: theme.spacing.md,
-    backgroundColor: theme.colors.background,
-  },
   formSection: {
     marginBottom: theme.spacing.lg,
     backgroundColor: theme.colors.surface,
@@ -545,14 +641,12 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
     marginBottom: theme.spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
-
   },
   label: {
     fontSize: theme.typography.h4.fontSize,
     fontWeight: theme.typography.h4.fontWeight,
     color: theme.colors.text,
     marginBottom: theme.spacing.sm,
-   
   },
   input: {
     borderWidth: 1,
@@ -588,7 +682,6 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
   optionsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    
   },
   optionButton: {
     borderWidth: 1,
@@ -741,4 +834,4 @@ const themedStyles = (theme: Theme) => StyleSheet.create({
   },
 });
 
-export default AddPersonScreen;
+export default EditPersonScreen;

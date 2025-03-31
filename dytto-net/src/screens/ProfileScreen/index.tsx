@@ -309,9 +309,28 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
               {/* Categories */}
               <View style={styles.categoriesContainer}>
                 {profileData?.categories?.map((category: string, index: number) => (
-                  <CategoryTag key={index} label={category} theme={theme} />
+                  <CategoryTag 
+                    key={index} 
+                    label={category} 
+                    theme={theme} 
+                    type="category"
+                  />
                 ))}
               </View>
+              
+              {/* Tags (if any) */}
+              {profileData?.relationship_tags && profileData.relationship_tags.length > 0 && (
+                <View style={styles.tagsContainer}>
+                  {profileData.relationship_tags.map((tag: string, index: number) => (
+                    <CategoryTag 
+                      key={`tag-${index}`} 
+                      label={tag} 
+                      theme={theme} 
+                      type="tag"
+                    />
+                  ))}
+                </View>
+              )}
             </View>
           </View>
         </View>
@@ -337,6 +356,13 @@ const ProfileScreen: React.FC<Props> = ({ route, navigation }) => {
           onPress={() => navigation.navigate('LogInteraction', { personId: String(personId), personName: profileData.name })}
         >
           <Text style={styles.actionButtonText}>+ Log Interaction</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => navigation.navigate('EditPerson', { personId: String(personId) })}
+        >
+          <Text style={styles.actionButtonText}>Edit Person</Text>
         </TouchableOpacity>
       </View>
 

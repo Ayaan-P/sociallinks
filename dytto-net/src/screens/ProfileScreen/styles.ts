@@ -53,6 +53,11 @@ export const createStyles = (theme: Theme) => StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
   },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+  },
   tabsContainer: {
     flexDirection: 'row',
     backgroundColor: theme.colors.surface,
