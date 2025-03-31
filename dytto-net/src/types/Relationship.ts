@@ -32,6 +32,11 @@ export interface RelationshipDashboardItem {
   days_since_interaction: number | "Never";
   categories: string[]; // Array of category names
   tags?: string[]; // Note: Tags might move to junction table later
+  // XP data (added to match updated backend response)
+  total_xp: number;
+  xp_earned_in_level: number;
+  xp_needed_for_level: number;
+  xp_bar_percentage: number;
 }
 
 // Type for data needed on the profile overview (matches GET /relationships/{id}/overview response)

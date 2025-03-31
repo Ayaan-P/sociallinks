@@ -3,9 +3,10 @@ import axios from 'axios';
 import { Relationship, CreateRelationshipPayload, UpdateRelationshipPayload, RelationshipDashboardItem, RelationshipOverview } from '../types/Relationship';
 import { Interaction, CreateInteractionPayload } from '../types/Interaction';
 import { Quest } from '../types/Quest';
+import { GlobalTreeData } from '../types/GlobalTree'; // Import Global Tree types
 
 // Define the base URL for the API
-export const API_BASE_URL = 'https://quiet-spies-obey.loca.lt'; // Update this with your actual backend URL
+export const API_BASE_URL = 'https://huge-maps-brush.loca.lt'; // Update this with your actual backend URL
 
 // Create an axios instance with the base URL
 const api = axios.create({
@@ -178,8 +179,8 @@ export const getRelationshipInteractions = async (relationshipId: string | numbe
   } catch (error) {
     handleApiError(error, `/relationships/${relationshipId}/interactions`);
     return [];
-  } // <-- Add missing closing brace for catch block
-}; // <-- Add missing closing brace for getRelationshipInteractions function
+  }
+};
 
 // Update createInteraction to use CreateInteractionPayload
 export const createInteraction = async (interactionData: CreateInteractionPayload): Promise<Interaction> => {
@@ -490,6 +491,23 @@ export const generateQuest = async (relationshipId: string | number): Promise<Qu
     throw error;
   }
 };
+
+// Global Tree API
+
+export const getGlobalTreeData = async (): Promise<GlobalTreeData | null> => {
+  try {
+    console.log('[API] Fetching Global Tree data');
+    // Assuming a new endpoint '/global_tree_data' exists on the backend
+    const response = await api.get('/global_tree_data');
+    console.log('[API] Global Tree data fetched');
+    return response.data;
+  } catch (error) {
+    handleApiError(error, '/global_tree_data');
+    // Return null or throw error depending on how you want to handle failures upstream
+    return null;
+  }
+};
+
 
 // Insights API
 

@@ -9,6 +9,7 @@ import DashboardScreen from './src/screens/DashboardScreen';
 import AddPersonScreen from './src/screens/AddPersonScreen';
 import LogInteractionScreen from './src/screens/LogInteractionScreen';
 import ProfileScreen from './src/screens/ProfileScreen/index';
+import GlobalTreeScreen from './src/screens/GlobalTreeScreen'; // Import the new screen
 import { ThemeProvider, useTheme } from './src/context/ThemeContext'; // Import useTheme as well
 
 // Define the stack navigator
@@ -18,6 +19,7 @@ export type RootStackParamList = {
   AddPerson: undefined;
   LogInteraction: { personId?: string; personName?: string };
   Profile: { personId: string }; // Profile screen requires a personId
+  GlobalTree: undefined; // Add GlobalTree screen
   // Add other screens and their parameters here later
 };
 
@@ -58,11 +60,13 @@ const AppNavigator: React.FC = () => {
         {/* Apply common header styles via screenOptions, specific titles per screen */}
         <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'dytto - net' }} />
         <Stack.Screen name="AddPerson" component={AddPersonScreen} options={{ title: 'Add New Person' }} />
-        <Stack.Screen name="LogInteraction" component={LogInteractionScreen} options={{ title: 'Log Interaction' }} />
-        {/* Profile screen title is set dynamically within the component */}
-        <Stack.Screen name="Profile" component={ProfileScreen} />
-      </Stack.Navigator>
-      <StatusBar style={theme.isDark ? 'light' : 'dark'} />
+         <Stack.Screen name="LogInteraction" component={LogInteractionScreen} options={{ title: 'Log Interaction' }} />
+         {/* Profile screen title is set dynamically within the component */}
+         <Stack.Screen name="Profile" component={ProfileScreen} />
+         {/* Add the Global Tree screen */}
+         <Stack.Screen name="GlobalTree" component={GlobalTreeScreen} options={{ title: 'Global Tree' }} />
+       </Stack.Navigator>
+       <StatusBar style={theme.isDark ? 'light' : 'dark'} />
     </NavigationContainer>
   );
 }
