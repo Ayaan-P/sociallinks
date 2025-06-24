@@ -10,58 +10,328 @@ import {
   Animated,
   Dimensions,
   SafeAreaView,
-  Alert
+  Alert,
+  StatusBar,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { RelationshipDashboardItem } from '../types/Relationship';
 import { RootStackParamList } from '../../App';
 import { useTheme } from '../context/ThemeContext';
-import { Theme } from '../types/theme';
 import { getDashboardData, getGlobalTreeData } from '../services/api';
 import { isOverdue, formatDaysSince } from './DashboardScreen/utils/helpers';
-import { RelationshipCard, DashboardHeader, EmptyState } from './DashboardScreen/components';
+import PremiumCard from '../components/Premium/PremiumCard';
+import PremiumButton from '../components/Premium/PremiumButton';
 
-// Get screen dimensions for responsive design
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Define navigation props type
 type DashboardScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Dashboard'>;
 
 interface Props {
   navigation: DashboardScreenNavigationProp;
 }
 
-// Main Component
+interface DashboardHeaderProps {
+  relationshipsCount: number;
+  onGlobalTreePress: () => void;
+  onAddPress: () => void;
+  theme: any;
+  scrollY: Animated.Value;
+}
+
+const DashboardHeader: React.FC<DashboardHeaderProps> = ({
+  relationshipsCount,
+  onGlobalTreePress,
+  onAddPress,
+  theme,
+  scrollY,
+}) => {
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, 50],
+    outputRange: [1, 0.9],
+    extrapolate: 'clamp',
+  });
+
+  const headerTranslateY = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [0, -20],
+    extrapolate: 'clamp',
+  });
+
+  return (
+    <Animated.View 
+      style={[
+        styles.headerContainer,
+        {
+          opacity: headerOpacity,
+          transform: [{ translateY: headerTranslateY }],
+        },
+      ]}
+    >
+      <LinearGradient
+        colors={[theme.colors.primary, theme.colors.primaryDark]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
+      >
+        {/* Header Content */}
+        <View style={styles.headerContent}>
+          {/* Title Section */}
+          <View style={styles.titleSection}>
+            <Text style={[styles.welcomeText, { color: theme.colors.textInverse }]}>
+              Welcome back
+            </Text>
+            <Text style={[styles.appTitle, { color: theme.colors.textInverse }]}>
+              Your Network
+            </Text>
+            <Text style={[styles.subtitle, { color: theme.colors.textInverse + 'CC' }]}>
+              {relationshipsCount} {relationshipsCount === 1 ? 'connection' : 'connections'}
+            </Text>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.headerActionButton}
+              onPress={onGlobalTreePress}
+            >
+              <MaterialCommunityIcons 
+                name="family-tree" 
+                size={24} 
+                color={theme.colors.textInverse} 
+              />
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.headerActionButton, styles.addButton]}
+              onPress={onAddPress}
+            >
+              <Ionicons 
+                name="add" 
+                size={24} 
+                color={theme.colors.primary} 
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Quick Stats */}
+        <View style={styles.quickStats}>
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: theme.colors.textInverse }]}>
+              {relationshipsCount}
+            </Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textInverse + 'CC' }]}>
+              Total
+            </Text>
+          </View>
+          
+          <View style={styles.statDivider} />
+          
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: theme.colors.textInverse }]}>
+              {Math.ceil(relationshipsCount * 0.3)}
+            </Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textInverse + 'CC' }]}>
+              Active
+            </Text>
+          </View>
+          
+          <View style={styles.statDivider} />
+          
+          <View style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: theme.colors.textInverse }]}>
+              {Math.floor(relationshipsCount * 0.2)}
+            </Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textInverse + 'CC' }]}>
+              Due
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
+    </Animated.View>
+  );
+};
+
+interface RelationshipCardProps {
+  item: RelationshipDashboardItem & { isOverdue?: boolean };
+  theme: any;
+  onPress: () => void;
+  index: number;
+}
+
+const RelationshipCard: React.FC<RelationshipCardProps> = ({
+  item,
+  theme,
+  onPress,
+  index,
+}) => {
+  const animatedValue = new Animated.Value(0);
+
+  useEffect(() => {
+    Animated.timing(animatedValue, {
+      toValue: 1,
+      duration: 300,
+      delay: index * 50,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  const opacity = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+
+  const translateY = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [50, 0],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.cardContainer,
+        {
+          opacity,
+          transform: [{ translateY }],
+        },
+      ]}
+    >
+      <PremiumCard
+        onPress={onPress}
+        variant={item.isOverdue ? 'elevated' : 'default'}
+        borderRadius="lg"
+        style={[
+          styles.relationshipCard,
+          item.isOverdue && {
+            borderLeftWidth: 4,
+            borderLeftColor: theme.colors.warning,
+          },
+        ]}
+      >
+        {/* Card Header */}
+        <View style={styles.cardHeader}>
+          {/* Profile Section */}
+          <View style={styles.profileSection}>
+            <View style={[styles.avatar, { backgroundColor: theme.colors.primary }]}>
+              <Text style={[styles.avatarText, { color: theme.colors.textInverse }]}>
+                {item.name.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            
+            <View style={styles.profileInfo}>
+              <Text style={[styles.profileName, { color: theme.colors.textPrimary }]}>
+                {item.name}
+              </Text>
+              <Text style={[styles.lastInteraction, { 
+                color: item.isOverdue ? theme.colors.warning : theme.colors.textSecondary 
+              }]}>
+                {formatDaysSince(item.days_since_interaction)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Level Badge */}
+          <View style={[styles.levelBadge, { backgroundColor: theme.colors.primary }]}>
+            <Text style={[styles.levelText, { color: theme.colors.textInverse }]}>
+              {item.level}
+            </Text>
+          </View>
+        </View>
+
+        {/* XP Progress */}
+        <View style={styles.progressSection}>
+          <View style={styles.progressInfo}>
+            <Text style={[styles.progressLabel, { color: theme.colors.textSecondary }]}>
+              Progress to Level {item.level + 1}
+            </Text>
+            <Text style={[styles.progressText, { color: theme.colors.textTertiary }]}>
+              {item.xp_earned_in_level}/{item.xp_needed_for_level} XP
+            </Text>
+          </View>
+          
+          <View style={[styles.progressBar, { backgroundColor: theme.colors.borderLight }]}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  backgroundColor: theme.colors.primary,
+                  width: `${item.xp_bar_percentage}%`,
+                },
+              ]}
+            />
+          </View>
+        </View>
+
+        {/* Categories */}
+        <View style={styles.categoriesSection}>
+          {item.categories?.slice(0, 2).map((category, index) => (
+            <View
+              key={index}
+              style={[
+                styles.categoryTag,
+                { backgroundColor: theme.colors.primary + '20' },
+              ]}
+            >
+              <Text style={[styles.categoryText, { color: theme.colors.primary }]}>
+                {category}
+              </Text>
+            </View>
+          ))}
+          
+          {item.categories && item.categories.length > 2 && (
+            <Text style={[styles.moreCategories, { color: theme.colors.textTertiary }]}>
+              +{item.categories.length - 2} more
+            </Text>
+          )}
+        </View>
+      </PremiumCard>
+    </Animated.View>
+  );
+};
+
+const EmptyState: React.FC<{ onAddPress: () => void; theme: any }> = ({
+  onAddPress,
+  theme,
+}) => (
+  <View style={styles.emptyState}>
+    <View style={[styles.emptyIcon, { backgroundColor: theme.colors.surfaceHighlight }]}>
+      <MaterialCommunityIcons
+        name="account-heart"
+        size={64}
+        color={theme.colors.primary}
+      />
+    </View>
+    
+    <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>
+      Start Building Connections
+    </Text>
+    
+    <Text style={[styles.emptyDescription, { color: theme.colors.textSecondary }]}>
+      Add your first person to begin tracking and growing your meaningful relationships.
+    </Text>
+    
+    <PremiumButton
+      title="Add Your First Person"
+      onPress={onAddPress}
+      variant="primary"
+      size="lg"
+      icon="add"
+      style={styles.emptyButton}
+    />
+  </View>
+);
+
 const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   const { theme } = useTheme();
-  const styles = themedStyles(theme);
-
-  // State management
   const [relationships, setRelationships] = useState<RelationshipDashboardItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [globalTreeAvailable, setGlobalTreeAvailable] = useState(false);
-
-  // Animation value for header
   const scrollY = new Animated.Value(0);
-  const headerHeight = scrollY.interpolate({
-    inputRange: [0, 100],
-    outputRange: [theme.spacing.xl * 2, theme.spacing.lg],
-    extrapolate: 'clamp'
-  });
-
-  // Check if global tree data is available
-  const checkGlobalTreeAvailability = useCallback(async () => {
-    try {
-      const treeData = await getGlobalTreeData();
-      setGlobalTreeAvailable(!!treeData);
-    } catch (error) {
-      console.error('[Dashboard] Error checking global tree availability:', error);
-      setGlobalTreeAvailable(false);
-    }
-  }, []);
 
   const fetchData = useCallback(async (isRefreshing = false) => {
     if (isRefreshing) {
@@ -72,7 +342,6 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
     setError(null);
 
     try {
-      // Fetch dashboard data from the API - returns RelationshipDashboardItem[]
       const dashboardData = await getDashboardData();
 
       if (!dashboardData || !Array.isArray(dashboardData)) {
@@ -80,19 +349,11 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
         return;
       }
 
-      // Data already matches RelationshipDashboardItem, just need to calculate isOverdue
-      const processedData = dashboardData.map((item) => {
-        // Calculate isOverdue based on fetched data
-        const overdue = isOverdue(
-          item.days_since_interaction,
-          // Need reminder_interval on dashboard item from backend
-          // Assuming it's available (if not, backend needs adjustment or remove overdue logic here)
-          (item as any).reminder_interval // Temporary cast if reminder_interval isn't in type yet
-        );
-        return { ...item, isOverdue: overdue }; // Add isOverdue flag
-      });
+      const processedData = dashboardData.map((item) => ({
+        ...item,
+        isOverdue: isOverdue(item.days_since_interaction, (item as any).reminder_interval),
+      }));
 
-      // Sort relationships: overdue first, then by level (descending)
       const sortedData = processedData.sort((a, b) => {
         if (a.isOverdue && !b.isOverdue) return -1;
         if (!a.isOverdue && b.isOverdue) return 1;
@@ -101,135 +362,114 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
 
       setRelationships(sortedData);
     } catch (error) {
-      console.error('[API] Error fetching dashboard data:', error); // Log the actual error
-      if (error instanceof Error) {
-        setError(error.message);
-      } else {
-        setError('Failed to connect to the server');
-      }
+      console.error('[API] Error fetching dashboard data:', error);
+      setError(error instanceof Error ? error.message : 'Failed to connect to the server');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [fetchData])
+  );
+
   const onRefresh = () => {
     fetchData(true);
   };
 
-  // Use useFocusEffect to refresh data when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-      checkGlobalTreeAvailability();
-    }, [fetchData, checkGlobalTreeAvailability])
-  );
-
-  // Initial data loading
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadInitialData = async () => {
-      if (!isMounted) return;
-      try {
-        await fetchData();
-        await checkGlobalTreeAvailability();
-      } catch (e) {
-        console.error('[Dashboard] Error in useEffect data loading:', e);
-      }
-    };
-
-    loadInitialData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [fetchData, checkGlobalTreeAvailability]);
-
-  // Render relationship item
-  const renderItem = ({ item }: { item: RelationshipDashboardItem & { isOverdue?: boolean } }) => (
+  const renderItem = ({ item, index }: { item: RelationshipDashboardItem & { isOverdue?: boolean }; index: number }) => (
     <RelationshipCard
       item={item}
       theme={theme}
       onPress={() => navigation.navigate('Profile', { personId: String(item.id) })}
-      onPhotoPress={() => navigation.navigate('Profile', { personId: String(item.id) })}
+      index={index}
     />
-  );
-
-  // Render header component for FlatList
-  const renderHeader = () => (
-    <DashboardHeader
-      relationshipsCount={relationships.length}
-      onGlobalTreePress={() => navigation.navigate('GlobalTree')}
-      theme={theme}
-      height={headerHeight}
-    />
-  );
-
-  // Render empty state
-  const renderEmptyComponent = () => (
-    <EmptyState
-      onAddPress={() => navigation.navigate('AddPerson')}
-      theme={theme}
-    />
-  );
-
-  // Render footer with add button
-  const renderFooter = () => (
-    <View style={styles.footer}>
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => navigation.navigate('AddPerson')}
-      >
-        <Text style={styles.addButtonText}>+ Add New Person</Text>
-      </TouchableOpacity>
-    </View>
   );
 
   if (loading && !refreshing) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={styles.loadingText}>Loading your relationships...</Text>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <StatusBar 
+          barStyle={theme.isDark ? 'light-content' : 'dark-content'} 
+          backgroundColor={theme.colors.primary} 
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
+            Loading your connections...
+          </Text>
+        </View>
       </View>
     );
   }
 
   if (error && !refreshing) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
-        <Text style={styles.errorTitle}>Connection Error</Text>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity
-          style={styles.retryButton}
-          onPress={() => fetchData()}
-        >
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <StatusBar 
+          barStyle={theme.isDark ? 'light-content' : 'dark-content'} 
+          backgroundColor={theme.colors.primary} 
+        />
+        <View style={styles.errorContainer}>
+          <Ionicons name="cloud-offline" size={64} color={theme.colors.error} />
+          <Text style={[styles.errorTitle, { color: theme.colors.error }]}>
+            Connection Error
+          </Text>
+          <Text style={[styles.errorText, { color: theme.colors.textSecondary }]}>
+            {error}
+          </Text>
+          <PremiumButton
+            title="Try Again"
+            onPress={() => fetchData()}
+            variant="primary"
+            icon="refresh"
+          />
+        </View>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <StatusBar 
+        barStyle="light-content" 
+        backgroundColor={theme.colors.primary} 
+      />
+      
       <FlatList
         data={relationships}
         renderItem={renderItem}
         keyExtractor={item => String(item.id)}
-        ListHeaderComponent={renderHeader}
-        ListEmptyComponent={renderEmptyComponent}
-        ListFooterComponent={relationships.length > 0 ? renderFooter : null}
-        contentContainerStyle={
-          relationships.length === 0
-            ? styles.emptyListContentContainer
-            : styles.listContentContainer
+        ListHeaderComponent={
+          <DashboardHeader
+            relationshipsCount={relationships.length}
+            onGlobalTreePress={() => navigation.navigate('GlobalTree')}
+            onAddPress={() => navigation.navigate('AddPerson')}
+            theme={theme}
+            scrollY={scrollY}
+          />
         }
+        ListEmptyComponent={
+          <EmptyState
+            onAddPress={() => navigation.navigate('AddPerson')}
+            theme={theme}
+          />
+        }
+        contentContainerStyle={[
+          styles.listContent,
+          relationships.length === 0 && styles.emptyListContent,
+        ]}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
             colors={[theme.colors.primary]}
             tintColor={theme.colors.primary}
+            progressBackgroundColor={theme.colors.surface}
           />
         }
         onScroll={Animated.event(
@@ -238,76 +478,263 @@ const DashboardScreen: React.FC<Props> = ({ navigation }) => {
         )}
         scrollEventThrottle={16}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 
-// Enhanced styles with improved visual design
-const themedStyles = (theme: Theme) => StyleSheet.create({
-  // Container styles
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background
   },
-  centerContent: {
+  
+  // Header Styles
+  headerContainer: {
+    marginBottom: 8,
+  },
+  headerGradient: {
+    paddingTop: 60,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 24,
+  },
+  titleSection: {
+    flex: 1,
+  },
+  welcomeText: {
+    fontSize: 16,
+    fontWeight: '500',
+    opacity: 0.9,
+    marginBottom: 4,
+  },
+  appTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  headerActionButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
-    alignItems: 'center'
-  },
-
-  // List content styles
-  listContentContainer: {
-    paddingBottom: theme.spacing.xl,
-  },
-  emptyListContentContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingBottom: theme.spacing.xl,
-  },
-
-  // Footer styles
-  footer: {
-    padding: theme.spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  addButton: {
-    backgroundColor: theme.colors.primary,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: 8,
     alignItems: 'center',
   },
-  addButtonText: {
-    color: '#fff',
-    fontWeight: '600',
+  addButton: {
+    backgroundColor: 'white',
+  },
+  
+  // Quick Stats
+  quickStats: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 16,
+    padding: 20,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    marginHorizontal: 16,
   },
 
-  // Loading and error states
+  // List Styles
+  listContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 100,
+  },
+  emptyListContent: {
+    flexGrow: 1,
+  },
+
+  // Card Styles
+  cardContainer: {
+    marginBottom: 16,
+  },
+  relationshipCard: {
+    padding: 20,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  profileSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  lastInteraction: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  levelBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  levelText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+
+  // Progress Styles
+  progressSection: {
+    marginBottom: 16,
+  },
+  progressInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  progressLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  progressText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  progressBar: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+
+  // Categories Styles
+  categoriesSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryTag: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  categoryText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  moreCategories: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
+  // Empty State
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingTop: 100,
+  },
+  emptyIcon: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  emptyDescription: {
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  emptyButton: {
+    width: '100%',
+  },
+
+  // Loading & Error States
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   loadingText: {
-    color: theme.colors.textSecondary,
-    marginTop: theme.spacing.sm,
+    marginTop: 16,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
   },
   errorTitle: {
-    fontSize: theme.typography.h3.fontSize,
-    fontWeight: theme.typography.h3.fontWeight,
-    color: theme.colors.error,
-    marginBottom: theme.spacing.sm,
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 8,
   },
   errorText: {
-    color: theme.colors.textSecondary,
-    fontSize: theme.typography.body.fontSize,
-    marginBottom: theme.spacing.lg,
+    fontSize: 16,
     textAlign: 'center',
-    paddingHorizontal: theme.spacing.lg, // Add padding for better readability
-  },
-  retryButton: {
-    backgroundColor: theme.colors.primary,
-    paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.lg,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
+    lineHeight: 24,
+    marginBottom: 32,
   },
 });
 

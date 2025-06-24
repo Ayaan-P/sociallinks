@@ -1,743 +1,751 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ScrollView, TouchableOpacity, FlatList } from 'react-native';
-import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import React, { useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  StatusBar,
+  Animated,
+  TouchableOpacity,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../../App'; // Import the param list type
-import { useTheme } from '../context/ThemeContext'; // Import useTheme
-import { Theme } from '../types/theme'; // Import Theme type
-import { createRelationship, updateRelationship } from '../services/api'; // Import API services
-import { CreateRelationshipPayload } from '../types/Relationship'; // Import payload type
+import { RootStackParamList } from '../../App';
+import { useTheme } from '../context/ThemeContext';
+import { createRelationship, updateRelationship } from '../services/api';
+import { CreateRelationshipPayload } from '../types/Relationship';
+import PremiumCard from '../components/Premium/PremiumCard';
+import PremiumButton from '../components/Premium/PremiumButton';
+import PremiumInput from '../components/Premium/PremiumInput';
 
-// Define navigation props type using the RootStackParamList
 type AddPersonScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AddPerson'>;
 
 interface Props {
   navigation: AddPersonScreenNavigationProp;
 }
 
-// Mock function for image picker - replace with actual library later
-const pickImage = async (): Promise<string | undefined> => {
-  console.log('Simulating image picker...');
-  return undefined;
-};
+interface CategoryOption {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  description: string;
+}
+
+interface TagCategory {
+  id: string;
+  name: string;
+  icon: string;
+  tags: string[];
+}
+
+const CATEGORY_OPTIONS: CategoryOption[] = [
+  {
+    id: 'friend',
+    name: 'Friend',
+    icon: 'people',
+    color: '#10B981',
+    description: 'Personal friendship',
+  },
+  {
+    id: 'family',
+    name: 'Family',
+    icon: 'home',
+    color: '#F59E0B',
+    description: 'Family member',
+  },
+  {
+    id: 'business',
+    name: 'Business',
+    icon: 'briefcase',
+    color: '#3B82F6',
+    description: 'Professional contact',
+  },
+  {
+    id: 'romantic',
+    name: 'Romantic',
+    icon: 'heart',
+    color: '#EF4444',
+    description: 'Romantic relationship',
+  },
+  {
+    id: 'mentor',
+    name: 'Mentor',
+    icon: 'school',
+    color: '#8B5CF6',
+    description: 'Guidance & advice',
+  },
+  {
+    id: 'colleague',
+    name: 'Colleague',
+    icon: 'business',
+    color: '#06B6D4',
+    description: 'Work colleague',
+  },
+];
+
+const TAG_CATEGORIES: TagCategory[] = [
+  {
+    id: 'interests',
+    name: 'Interests',
+    icon: 'star',
+    tags: ['Sports', 'Music', 'Art', 'Travel', 'Food', 'Technology', 'Reading', 'Movies'],
+  },
+  {
+    id: 'traits',
+    name: 'Traits',
+    icon: 'psychology',
+    tags: ['Funny', 'Kind', 'Ambitious', 'Creative', 'Reliable', 'Thoughtful', 'Organized'],
+  },
+  {
+    id: 'contexts',
+    name: 'Contexts',
+    icon: 'place',
+    tags: ['Work', 'School', 'Neighbor', 'Childhood', 'Online', 'Event', 'Group'],
+  },
+];
 
 const AddPersonScreen: React.FC<Props> = ({ navigation }) => {
-  const { theme } = useTheme(); // Use theme context
-  const styles = themedStyles(theme); // Generate themed styles
-
+  const { theme } = useTheme();
+  const scrollY = useRef(new Animated.Value(0)).current;
+  
+  // Form State
   const [name, setName] = useState('');
   const [bio, setBio] = useState('');
-  const [birthday, setBirthday] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [location, setLocation] = useState('');
-  const [preferredCommunication, setPreferredCommunication] = useState('');
-  const [meetingFrequency, setMeetingFrequency] = useState('');
-  const [notes, setNotes] = useState('');
-  const [photoUri, setPhotoUri] = useState<string | undefined>(undefined);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['Friend']);
-  const [relationshipType, setRelationshipType] = useState('personal');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [reminderInterval, setReminderInterval] = useState('weekly');
-  const [tags, setTags] = useState<string[]>([]);
-  const [newTag, setNewTag] = useState('');
-  const [activeTagCategory, setActiveTagCategory] = useState('custom');
+  const [loading, setLoading] = useState(false);
+  
+  // UI State
+  const [activeSection, setActiveSection] = useState<string | null>(null);
+  const [activeTagCategory, setActiveTagCategory] = useState('interests');
 
-  const handleChoosePhoto = async () => {
-    const uri = await pickImage();
-    if (uri) {
-      setPhotoUri(uri);
-      Alert.alert('Photo Selected (Simulated)', `URI: ${uri}`);
+  const styles = createStyles(theme);
+
+  // Header animation
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [1, 0.95],
+    extrapolate: 'clamp',
+  });
+
+  const handleCategoryToggle = (categoryName: string) => {
+    if (selectedCategories.includes(categoryName)) {
+      if (selectedCategories.length > 1) {
+        setSelectedCategories(selectedCategories.filter(c => c !== categoryName));
+      }
     } else {
-      Alert.alert('Image Picker', 'No image selected or picker cancelled (Simulated).');
+      setSelectedCategories([...selectedCategories, categoryName]);
     }
   };
 
-  const handleAddTag = () => {
-    if (newTag.trim() && !tags.includes(newTag.trim())) {
-      setTags([...tags, newTag.trim()]);
-      setNewTag('');
+  const handleTagToggle = (tag: string) => {
+    if (selectedTags.includes(tag)) {
+      setSelectedTags(selectedTags.filter(t => t !== tag));
+    } else {
+      setSelectedTags([...selectedTags, tag]);
     }
-  };
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    setTags(tags.filter(tag => tag !== tagToRemove));
-  };
-
-  // Predefined tag categories with suggestions
-  const tagCategories = {
-    interests: ['Sports', 'Music', 'Art', 'Travel', 'Food', 'Technology', 'Reading', 'Movies', 'Gaming', 'Fitness'],
-    traits: ['Funny', 'Kind', 'Ambitious', 'Creative', 'Reliable', 'Thoughtful', 'Organized', 'Adventurous'],
-    contexts: ['Work', 'School', 'Neighbor', 'Childhood', 'Online', 'Mutual Friend', 'Event', 'Group'],
-    dynamics: ['Mentor', 'Mentee', 'Collaborator', 'Support', 'Accountability', 'Inspiration'],
-    custom: []
   };
 
   const handleSubmit = async () => {
-    if (!name || selectedCategories.length === 0 || !relationshipType || !reminderInterval) {
-      Alert.alert('Error', 'Please fill in all required fields.');
+    if (!name.trim()) {
+      Alert.alert('Required Field', 'Please enter a name for this person.');
       return;
     }
-    
+
+    if (selectedCategories.length === 0) {
+      Alert.alert('Required Field', 'Please select at least one relationship category.');
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      // Create relationship data using the specific payload type
       const relationshipData: CreateRelationshipPayload = {
-        name,
-        bio,
-        birthday: birthday || undefined,
-        phone: phone || undefined,
-        email: email || undefined,
-        location: location || undefined,
-        preferred_communication: preferredCommunication || undefined,
-        meeting_frequency: meetingFrequency || undefined,
-        notes: notes || undefined,
-        relationship_type: relationshipType,
+        name: name.trim(),
+        bio: bio.trim() || undefined,
+        relationship_type: 'personal',
         reminder_interval: reminderInterval,
-        initial_category_name: selectedCategories[0], // Use the first selected category as the initial one
-        photo_url: photoUri,
-        tags: tags
+        initial_category_name: selectedCategories[0],
+        tags: selectedTags,
       };
 
-      console.log('Submitting new person to API:', relationshipData);
-      
-      // Call the API to create the relationship
       const newRelationship = await createRelationship(relationshipData);
-      
-      // If we selected multiple categories, update the relationship with all categories
+
       if (selectedCategories.length > 1) {
         try {
           await updateRelationship(newRelationship.id, {
-            categories: selectedCategories
+            categories: selectedCategories,
           });
-          console.log(`Updated relationship ${newRelationship.id} with all selected categories:`, selectedCategories);
         } catch (updateError) {
-          console.error('Error updating relationship with additional categories:', updateError);
-          // Continue with success message even if category update fails
+          console.error('Error updating categories:', updateError);
         }
       }
-      
-      Alert.alert('Success', `Link created for ${name}.`);
-      navigation.goBack();
+
+      Alert.alert(
+        'Success',
+        `${name} has been added to your network!`,
+        [
+          {
+            text: 'View Profile',
+            onPress: () => {
+              navigation.replace('Profile', { personId: String(newRelationship.id) });
+            },
+          },
+          {
+            text: 'Add Another',
+            onPress: () => {
+              setName('');
+              setBio('');
+              setSelectedCategories(['Friend']);
+              setSelectedTags([]);
+              setReminderInterval('weekly');
+            },
+          },
+        ]
+      );
     } catch (error) {
-      console.error('Error adding person:', error);
-      Alert.alert('Error', 'Failed to add person. Please try again.');
+      console.error('Error creating relationship:', error);
+      Alert.alert(
+        'Error',
+        'Failed to add person. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
-  // State for collapsible sections
-  const [showAdditionalInfo, setShowAdditionalInfo] = useState(false);
-  const [showContactInfo, setShowContactInfo] = useState(false);
+  const renderCategoryCard = (category: CategoryOption) => {
+    const isSelected = selectedCategories.includes(category.name);
+    
+    return (
+      <PremiumCard
+        key={category.id}
+        onPress={() => handleCategoryToggle(category.name)}
+        variant={isSelected ? 'elevated' : 'default'}
+        style={[
+          styles.categoryCard,
+          isSelected && {
+            borderColor: category.color,
+            borderWidth: 2,
+          },
+        ]}
+      >
+        <View style={[styles.categoryIcon, { backgroundColor: category.color + '20' }]}>
+          <Ionicons name={category.icon as any} size={24} color={category.color} />
+        </View>
+        
+        <Text style={[styles.categoryName, { color: theme.colors.textPrimary }]}>
+          {category.name}
+        </Text>
+        
+        <Text style={[styles.categoryDescription, { color: theme.colors.textSecondary }]}>
+          {category.description}
+        </Text>
+        
+        {isSelected && (
+          <View style={[styles.selectedIndicator, { backgroundColor: category.color }]}>
+            <Ionicons name="checkmark" size={16} color="white" />
+          </View>
+        )}
+      </PremiumCard>
+    );
+  };
+
+  const renderTagButton = (tag: string) => {
+    const isSelected = selectedTags.includes(tag);
+    
+    return (
+      <TouchableOpacity
+        key={tag}
+        style={[
+          styles.tagButton,
+          {
+            backgroundColor: isSelected 
+              ? theme.colors.primary + '20' 
+              : theme.colors.surfaceHighlight,
+            borderColor: isSelected 
+              ? theme.colors.primary 
+              : theme.colors.border,
+          },
+        ]}
+        onPress={() => handleTagToggle(tag)}
+      >
+        <Text style={[
+          styles.tagButtonText,
+          {
+            color: isSelected 
+              ? theme.colors.primary 
+              : theme.colors.textSecondary,
+            fontWeight: isSelected ? '600' : '500',
+          },
+        ]}>
+          {tag}
+        </Text>
+        
+        {isSelected && (
+          <Ionicons 
+            name="checkmark-circle" 
+            size={16} 
+            color={theme.colors.primary}
+            style={styles.tagSelectedIcon}
+          />
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.formSection}>
-        <Text style={styles.sectionTitle}>Basic Information</Text>
-        
-        <Text style={styles.label}>Name: <Text style={styles.required}>*</Text></Text>
-        <TextInput
-          style={styles.input}
-          value={name}
-          onChangeText={setName}
-          placeholder="Enter person's name"
-          placeholderTextColor={theme.colors.textSecondary}
-        />
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <StatusBar 
+        barStyle={theme.isDark ? 'light-content' : 'dark-content'} 
+        backgroundColor={theme.colors.primary} 
+      />
 
-        <Text style={styles.label}>Bio:</Text>
-        <TextInput
-          style={[styles.input, styles.multilineInput]}
-          value={bio}
-          onChangeText={setBio}
-          placeholder="Enter a brief description"
-          placeholderTextColor={theme.colors.textSecondary}
-          multiline={true}
-          numberOfLines={3}
-        />
-
-        <Text style={styles.label}>Photo:</Text>
-        <View style={styles.photoContainer}>
-          <TouchableOpacity 
-            style={styles.button} 
-            onPress={handleChoosePhoto}
-          >
-            <Text style={styles.buttonText}>Choose Photo</Text>
-          </TouchableOpacity>
-          {photoUri && <Text style={styles.photoUriText}>Selected: {photoUri.substring(photoUri.lastIndexOf('/') + 1)}</Text>}
-        </View>
-        
-        {/* Collapsible Additional Information Section */}
-        <TouchableOpacity 
-          style={styles.collapsibleHeader}
-          onPress={() => setShowAdditionalInfo(!showAdditionalInfo)}
+      {/* Header */}
+      <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
+        <LinearGradient
+          colors={[theme.colors.primary, theme.colors.primaryDark]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.headerGradient}
         >
-          <Text style={styles.collapsibleTitle}>
-            Additional Information {showAdditionalInfo ? '(hide)' : '(show)'}
-          </Text>
-          <Ionicons 
-            name={showAdditionalInfo ? 'chevron-up' : 'chevron-down'} 
-            size={20} 
-            color={theme.colors.text} 
-          />
-        </TouchableOpacity>
-        
-        {showAdditionalInfo && (
-          <View style={styles.collapsibleContent}>
-            <Text style={styles.label}>Birthday:</Text>
-            <TextInput
-              style={styles.input}
-              value={birthday}
-              onChangeText={setBirthday}
-              placeholder="MM/DD/YYYY (optional)"
-              placeholderTextColor={theme.colors.textSecondary}
-            />
-
-            <Text style={styles.label}>Location:</Text>
-            <TextInput
-              style={styles.input}
-              value={location}
-              onChangeText={setLocation}
-              placeholder="Where they live/work (optional)"
-              placeholderTextColor={theme.colors.textSecondary}
-            />
-
-            <Text style={styles.label}>Meeting Frequency:</Text>
-            <TextInput
-              style={styles.input}
-              value={meetingFrequency}
-              onChangeText={setMeetingFrequency}
-              placeholder="How often to meet (optional)"
-              placeholderTextColor={theme.colors.textSecondary}
-            />
-
-            <Text style={styles.label}>Notes:</Text>
-            <TextInput
-              style={[styles.input, styles.multilineInput]}
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Additional notes (optional)"
-              placeholderTextColor={theme.colors.textSecondary}
-              multiline={true}
-              numberOfLines={3}
-            />
-          </View>
-        )}
-        
-        {/* Collapsible Contact Information Section */}
-        <TouchableOpacity 
-          style={styles.collapsibleHeader}
-          onPress={() => setShowContactInfo(!showContactInfo)}
-        >
-          <Text style={styles.collapsibleTitle}>
-            Contact Information {showContactInfo ? '(hide)' : '(show)'}
-          </Text>
-          <Ionicons 
-            name={showContactInfo ? 'chevron-up' : 'chevron-down'} 
-            size={20} 
-            color={theme.colors.text} 
-          />
-        </TouchableOpacity>
-        
-        {showContactInfo && (
-          <View style={styles.collapsibleContent}>
-            <Text style={styles.label}>Phone:</Text>
-            <TextInput
-              style={styles.input}
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="Phone number (optional)"
-              placeholderTextColor={theme.colors.textSecondary}
-              keyboardType="phone-pad"
-            />
-            
-            <Text style={styles.label}>Email:</Text>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Email address (optional)"
-              placeholderTextColor={theme.colors.textSecondary}
-              keyboardType="email-address"
-            />
-
-            <Text style={styles.label}>Preferred Communication:</Text>
-            <TextInput
-              style={styles.input}
-              value={preferredCommunication}
-              onChangeText={setPreferredCommunication}
-              placeholder="How they prefer to be contacted (optional)"
-              placeholderTextColor={theme.colors.textSecondary}
-            />
-          </View>
-        )}
-      </View>
-
-      <View style={styles.formSection}>
-        <Text style={styles.sectionTitle}>Relationship Details</Text>
-        
-        <Text style={styles.label}>Relationship Categories: <Text style={styles.required}>*</Text></Text>
-        <Text style={styles.helperText}>Select one or more categories that describe this relationship</Text>
-        <View style={styles.optionsContainer}>
-          {[
-            'Friend', 'Family', 'Business', 'Acquaintance', 'Romantic', 
-            'Mentor', 'Colleague', 'Neighbor', 'Classmate', 'Community'
-          ].map(category => (
+          <View style={styles.headerContent}>
             <TouchableOpacity
-              key={category}
-              style={[
-                styles.optionButton,
-                selectedCategories.includes(category) && styles.selectedOption
-              ]}
-              onPress={() => {
-                if (selectedCategories.includes(category)) {
-                  // Don't allow removing the last category
-                  if (selectedCategories.length > 1) {
-                    setSelectedCategories(selectedCategories.filter(c => c !== category));
-                  }
-                } else {
-                  setSelectedCategories([...selectedCategories, category]);
-                }
-              }}
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
             >
-              <Text 
-                style={[
-                  styles.optionText,
-                  selectedCategories.includes(category) && styles.selectedOptionText
-                ]}
-              >
-                {category}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={styles.label}>Relationship Type: <Text style={styles.required}>*</Text></Text>
-        <View style={styles.optionsContainer}>
-          {['personal', 'professional', 'family'].map(type => (
-            <TouchableOpacity
-              key={type}
-              style={[
-                styles.optionButton,
-                relationshipType === type && styles.selectedOption
-              ]}
-              onPress={() => setRelationshipType(type)}
-            >
-              <Text 
-                style={[
-                  styles.optionText,
-                  relationshipType === type && styles.selectedOptionText
-                ]}
-              >
-                {type.charAt(0).toUpperCase() + type.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.formSection}>
-        <Text style={styles.sectionTitle}>Reminder Settings</Text>
-        
-        <Text style={styles.label}>Reminder Interval: <Text style={styles.required}>*</Text></Text>
-        <View style={styles.optionsContainer}>
-          {['weekly', 'biweekly', 'monthly', 'custom'].map(interval => (
-            <TouchableOpacity
-              key={interval}
-              style={[
-                styles.optionButton,
-                reminderInterval === interval && styles.selectedOption
-              ]}
-              onPress={() => setReminderInterval(interval)}
-            >
-              <Text 
-                style={[
-                  styles.optionText,
-                  reminderInterval === interval && styles.selectedOptionText
-                ]}
-              >
-                {interval.charAt(0).toUpperCase() + interval.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.formSection}>
-        <Text style={styles.sectionTitle}>Tags</Text>
-        <Text style={styles.helperText}>Tags help you remember important details about this relationship</Text>
-        
-        {/* Tag category selector */}
-        <View style={styles.tagCategoryContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <TouchableOpacity 
-              style={[styles.tagCategoryButton, activeTagCategory === 'interests' && styles.activeTagCategory]} 
-              onPress={() => setActiveTagCategory('interests')}
-            >
-              <MaterialIcons name="interests" size={16} color={activeTagCategory === 'interests' ? theme.colors.background : theme.colors.primary} />
-              <Text style={[styles.tagCategoryText, activeTagCategory === 'interests' && styles.activeTagCategoryText]}>Interests</Text>
+              <Ionicons name="arrow-back" size={24} color="white" />
             </TouchableOpacity>
             
-            <TouchableOpacity 
-              style={[styles.tagCategoryButton, activeTagCategory === 'traits' && styles.activeTagCategory]} 
-              onPress={() => setActiveTagCategory('traits')}
-            >
-              <MaterialIcons name="psychology" size={16} color={activeTagCategory === 'traits' ? theme.colors.background : theme.colors.primary} />
-              <Text style={[styles.tagCategoryText, activeTagCategory === 'traits' && styles.activeTagCategoryText]}>Traits</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.tagCategoryButton, activeTagCategory === 'contexts' && styles.activeTagCategory]} 
-              onPress={() => setActiveTagCategory('contexts')}
-            >
-              <MaterialIcons name="place" size={16} color={activeTagCategory === 'contexts' ? theme.colors.background : theme.colors.primary} />
-              <Text style={[styles.tagCategoryText, activeTagCategory === 'contexts' && styles.activeTagCategoryText]}>Contexts</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.tagCategoryButton, activeTagCategory === 'dynamics' && styles.activeTagCategory]} 
-              onPress={() => setActiveTagCategory('dynamics')}
-            >
-              <MaterialCommunityIcons name="handshake" size={16} color={activeTagCategory === 'dynamics' ? theme.colors.background : theme.colors.primary} />
-              <Text style={[styles.tagCategoryText, activeTagCategory === 'dynamics' && styles.activeTagCategoryText]}>Dynamics</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.tagCategoryButton, activeTagCategory === 'custom' && styles.activeTagCategory]} 
-              onPress={() => setActiveTagCategory('custom')}
-            >
-              <MaterialIcons name="add" size={16} color={activeTagCategory === 'custom' ? theme.colors.background : theme.colors.primary} />
-              <Text style={[styles.tagCategoryText, activeTagCategory === 'custom' && styles.activeTagCategoryText]}>Custom</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-        
-        {/* Tag suggestions or custom input */}
-        {activeTagCategory === 'custom' ? (
-          <View style={styles.tagInputContainer}>
-            <TextInput
-              style={styles.tagInput}
-              value={newTag}
-              onChangeText={setNewTag}
-              placeholder="Add a custom tag"
-              placeholderTextColor={theme.colors.textSecondary}
-            />
-            <TouchableOpacity 
-              style={styles.addTagButton} 
-              onPress={handleAddTag}
-            >
-              <Text style={styles.addTagButtonText}>Add</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.tagSuggestionsContainer}>
-            <FlatList
-              data={tagCategories[activeTagCategory as keyof typeof tagCategories]}
-              horizontal={false}
-              numColumns={2}
-              renderItem={({item}) => (
-                <TouchableOpacity 
-                  style={[
-                    styles.tagSuggestion,
-                    tags.includes(item) && styles.selectedTagSuggestion
-                  ]}
-                  onPress={() => {
-                    if (tags.includes(item)) {
-                      handleRemoveTag(item);
-                    } else {
-                      setTags([...tags, item]);
-                    }
-                  }}
-                >
-                  <Text 
-                    style={[
-                      styles.tagSuggestionText,
-                      tags.includes(item) && styles.selectedTagSuggestionText
-                    ]}
-                  >
-                    {item}
-                  </Text>
-                  {tags.includes(item) && (
-                    <MaterialIcons name="check" size={16} color={theme.colors.background} />
-                  )}
-                </TouchableOpacity>
-              )}
-              keyExtractor={(item) => item}
-            />
-          </View>
-        )}
-        
-        {/* Display selected tags */}
-        {tags.length > 0 && (
-          <View>
-            <Text style={styles.selectedTagsTitle}>Selected Tags:</Text>
-            <View style={styles.tagsContainer}>
-              {tags.map(tag => (
-                <View key={tag} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
-                  <TouchableOpacity onPress={() => handleRemoveTag(tag)}>
-                    <Text style={styles.removeTagText}>×</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
+            <View style={styles.headerTitleSection}>
+              <Text style={styles.headerTitle}>Add New Person</Text>
+              <Text style={styles.headerSubtitle}>Build your network</Text>
             </View>
           </View>
-        )}
-      </View>
+        </LinearGradient>
+      </Animated.View>
 
-      <TouchableOpacity 
-        style={styles.submitButton} 
-        onPress={handleSubmit}
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <Text style={styles.submitButtonText}>Add Person</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <ScrollView
+          style={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+          )}
+          scrollEventThrottle={16}
+        >
+          {/* Basic Information */}
+          <PremiumCard style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
+              Basic Information
+            </Text>
+            
+            <PremiumInput
+              label="Full Name"
+              value={name}
+              onChangeText={setName}
+              placeholder="Enter their name"
+              required
+              leftIcon="person"
+            />
+            
+            <PremiumInput
+              label="Bio (Optional)"
+              value={bio}
+              onChangeText={setBio}
+              placeholder="Brief description or notes"
+              multiline
+              numberOfLines={3}
+              leftIcon="document-text"
+            />
+          </PremiumCard>
+
+          {/* Relationship Categories */}
+          <PremiumCard style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
+              Relationship Type
+            </Text>
+            
+            <Text style={[styles.sectionDescription, { color: theme.colors.textSecondary }]}>
+              Select one or more categories that describe your relationship
+            </Text>
+            
+            <View style={styles.categoriesGrid}>
+              {CATEGORY_OPTIONS.map(renderCategoryCard)}
+            </View>
+          </PremiumCard>
+
+          {/* Tags */}
+          <PremiumCard style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
+              Tags & Interests
+            </Text>
+            
+            <Text style={[styles.sectionDescription, { color: theme.colors.textSecondary }]}>
+              Add tags to remember important details about this person
+            </Text>
+            
+            {/* Tag Category Selector */}
+            <View style={styles.tagCategoryContainer}>
+              {TAG_CATEGORIES.map((category) => (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[
+                    styles.tagCategoryButton,
+                    {
+                      backgroundColor: activeTagCategory === category.id 
+                        ? theme.colors.primary 
+                        : theme.colors.surfaceHighlight,
+                    },
+                  ]}
+                  onPress={() => setActiveTagCategory(category.id)}
+                >
+                  <MaterialIcons
+                    name={category.icon as any}
+                    size={16}
+                    color={activeTagCategory === category.id ? 'white' : theme.colors.textSecondary}
+                  />
+                  <Text style={[
+                    styles.tagCategoryText,
+                    {
+                      color: activeTagCategory === category.id 
+                        ? 'white' 
+                        : theme.colors.textSecondary,
+                    },
+                  ]}>
+                    {category.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            {/* Tag Buttons */}
+            <View style={styles.tagsContainer}>
+              {TAG_CATEGORIES.find(cat => cat.id === activeTagCategory)?.tags.map(renderTagButton)}
+            </View>
+            
+            {/* Selected Tags Summary */}
+            {selectedTags.length > 0 && (
+              <View style={styles.selectedTagsContainer}>
+                <Text style={[styles.selectedTagsTitle, { color: theme.colors.textSecondary }]}>
+                  Selected Tags ({selectedTags.length})
+                </Text>
+                <View style={styles.selectedTagsList}>
+                  {selectedTags.map((tag) => (
+                    <View key={tag} style={[styles.selectedTag, { backgroundColor: theme.colors.primary + '20' }]}>
+                      <Text style={[styles.selectedTagText, { color: theme.colors.primary }]}>
+                        {tag}
+                      </Text>
+                      <TouchableOpacity onPress={() => handleTagToggle(tag)}>
+                        <Ionicons name="close" size={16} color={theme.colors.primary} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </PremiumCard>
+
+          {/* Reminder Settings */}
+          <PremiumCard style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
+              Reminder Settings
+            </Text>
+            
+            <Text style={[styles.sectionDescription, { color: theme.colors.textSecondary }]}>
+              How often would you like to be reminded to connect?
+            </Text>
+            
+            <View style={styles.reminderOptions}>
+              {[
+                { value: 'weekly', label: 'Weekly', icon: 'calendar' },
+                { value: 'biweekly', label: 'Bi-weekly', icon: 'calendar-outline' },
+                { value: 'monthly', label: 'Monthly', icon: 'calendar-clear' },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.reminderOption,
+                    {
+                      backgroundColor: reminderInterval === option.value 
+                        ? theme.colors.primary + '20' 
+                        : theme.colors.surfaceHighlight,
+                      borderColor: reminderInterval === option.value 
+                        ? theme.colors.primary 
+                        : theme.colors.border,
+                    },
+                  ]}
+                  onPress={() => setReminderInterval(option.value)}
+                >
+                  <Ionicons
+                    name={option.icon as any}
+                    size={24}
+                    color={reminderInterval === option.value ? theme.colors.primary : theme.colors.textSecondary}
+                  />
+                  <Text style={[
+                    styles.reminderOptionText,
+                    {
+                      color: reminderInterval === option.value 
+                        ? theme.colors.primary 
+                        : theme.colors.textSecondary,
+                    },
+                  ]}>
+                    {option.label}
+                  </Text>
+                  
+                  {reminderInterval === option.value && (
+                    <View style={[styles.reminderSelectedIndicator, { backgroundColor: theme.colors.primary }]}>
+                      <Ionicons name="checkmark" size={16} color="white" />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </PremiumCard>
+        </ScrollView>
+
+        {/* Footer Actions */}
+        <View style={[styles.footer, { backgroundColor: theme.colors.background }]}>
+          <PremiumButton
+            title="Add to Network"
+            onPress={handleSubmit}
+            variant="primary"
+            size="lg"
+            fullWidth
+            loading={loading}
+            disabled={!name.trim() || selectedCategories.length === 0}
+            icon="add"
+          />
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
-// Function to generate themed styles
-const themedStyles = (theme: Theme) => StyleSheet.create({
-  helperText: {
-    fontSize: theme.typography.caption.fontSize,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.sm,
-    fontStyle: 'italic',
-  },
-  required: {
-    color: theme.colors.error || 'red',
-    fontWeight: 'bold',
-  },
-  collapsibleHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    marginTop: theme.spacing.md,
-  },
-  collapsibleTitle: {
-    fontSize: theme.typography.body.fontSize,
-    fontWeight: 'bold',
-    color: theme.colors.primary,
-  },
-  collapsibleContent: {
-    marginTop: theme.spacing.sm,
-  },
-  multilineInput: {
-    height: 80,
-    textAlignVertical: 'top',
-    paddingTop: 10,
-  },
+const createStyles = (theme: any) => StyleSheet.create({
   container: {
     flex: 1,
-    padding: theme.spacing.md,
-    backgroundColor: theme.colors.background,
   },
-  formSection: {
-    marginBottom: theme.spacing.lg,
-    backgroundColor: theme.colors.surface,
-    borderRadius: 10,
-    padding: theme.spacing.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+  
+  // Header
+  header: {
+    zIndex: 10,
   },
-  sectionTitle: {
-    fontSize: theme.typography.h4.fontSize,
-    fontWeight: theme.typography.h4.fontWeight,
-    color: theme.colors.primary,
-    marginBottom: theme.spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-
+  headerGradient: {
+    paddingTop: Platform.OS === 'ios' ? 0 : 24,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
   },
-  label: {
-    fontSize: theme.typography.h4.fontSize,
-    fontWeight: theme.typography.h4.fontWeight,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
-   
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.background,
-    color: theme.colors.text,
-    padding: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
-    borderRadius: 5,
-    fontSize: theme.typography.body.fontSize,
-  },
-  photoContainer: {
+  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: theme.spacing.sm,
   },
-  photoUriText: {
-    marginLeft: theme.spacing.sm,
-    fontSize: theme.typography.caption.fontSize,
-    color: theme.colors.textSecondary,
-    flexShrink: 1,
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
   },
-  button: {
-    backgroundColor: theme.colors.primary,
-    padding: theme.spacing.sm,
-    borderRadius: 50,
+  headerTitleSection: {
+    flex: 1,
   },
-  buttonText: {
-    color: theme.isDark ? theme.colors.background : theme.colors.background,
+  headerTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
-    textAlign: 'center',
+    color: 'white',
+    marginBottom: 2,
   },
-  optionsContainer: {
+  headerSubtitle: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+
+  // Layout
+  keyboardContainer: {
+    flex: 1,
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 100,
+  },
+
+  // Sections
+  section: {
+    marginBottom: 24,
+    padding: 20,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  sectionDescription: {
+    fontSize: 16,
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+
+  // Categories
+  categoriesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    
+    gap: 12,
   },
-  optionButton: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 50,
-    padding: theme.spacing.sm,
-    marginRight: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
+  categoryCard: {
+    width: '48%',
+    padding: 16,
+    alignItems: 'center',
+    position: 'relative',
   },
-  selectedOption: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
+  categoryIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  optionText: {
-    color: theme.colors.text,
+  categoryName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+    textAlign: 'center',
   },
-  selectedOptionText: {
-    color: theme.isDark ? theme.colors.background : theme.colors.background,
+  categoryDescription: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 16,
   },
+  selectedIndicator: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Tags
   tagCategoryContainer: {
-    marginBottom: theme.spacing.sm,
+    flexDirection: 'row',
+    marginBottom: 20,
+    gap: 8,
   },
   tagCategoryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.background,
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
-    borderRadius: 50,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 6,
-    marginRight: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
-  },
-  activeTagCategory: {
-    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
   },
   tagCategoryText: {
-    color: theme.colors.primary,
-    fontSize: theme.typography.caption.fontSize,
-    marginLeft: 4,
-  },
-  activeTagCategoryText: {
-    color: theme.colors.background,
-  },
-  tagInputContainer: {
-    flexDirection: 'row',
-    marginBottom: theme.spacing.md,
-  },
-  tagInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.background,
-    color: theme.colors.text,
-    padding: theme.spacing.sm,
-    borderRadius: 50,
-    fontSize: theme.typography.body.fontSize,
-    marginRight: theme.spacing.sm,
-  },
-  addTagButton: {
-    backgroundColor: theme.colors.primary,
-    padding: theme.spacing.sm,
-    borderRadius: 50,
-    justifyContent: 'center',
-  },
-  addTagButtonText: {
-    color: theme.isDark ? theme.colors.background : theme.colors.text,
-    fontWeight: 'bold',
-  },
-  tagSuggestionsContainer: {
-    marginBottom: theme.spacing.md,
-  },
-  tagSuggestion: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: theme.colors.background,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 50,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 8,
-    marginRight: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
-    flex: 1,
-    maxWidth: '48%',
-  },
-  selectedTagSuggestion: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
-  },
-  tagSuggestionText: {
-    color: theme.colors.text,
-    fontSize: theme.typography.caption.fontSize,
-  },
-  selectedTagSuggestionText: {
-    color: theme.colors.background,
-    fontWeight: 'bold',
-  },
-  selectedTagsTitle: {
-    fontSize: theme.typography.caption.fontSize,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-    marginTop: theme.spacing.sm,
-    marginBottom: theme.spacing.xs,
+    fontSize: 14,
+    fontWeight: '500',
   },
   tagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: theme.spacing.xs,
+    gap: 10,
   },
-  tag: {
+  tagButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.primary + '33', // Adding transparency to primary color
-    borderRadius: 50,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 4,
-    marginRight: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
   },
-  tagText: {
-    color: theme.colors.text,
-    fontSize: theme.typography.caption.fontSize,
+  tagButtonText: {
+    fontSize: 14,
   },
-  removeTagText: {
-    color: theme.colors.error || 'red',
+  tagSelectedIcon: {
     marginLeft: 4,
+  },
+  selectedTagsContainer: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  selectedTagsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  selectedTagsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  selectedTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 6,
+  },
+  selectedTagText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  // Reminder Options
+  reminderOptions: {
+    gap: 12,
+  },
+  reminderOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    position: 'relative',
+  },
+  reminderOptionText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '500',
+    marginLeft: 12,
+    flex: 1,
   },
-  submitButton: {
-    backgroundColor: theme.colors.primary,
-    padding: theme.spacing.md,
-    borderRadius: 50,
-    marginTop: theme.spacing.sm,
-    marginBottom: theme.spacing.xl,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+  reminderSelectedIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  submitButtonText: {
-    color: theme.isDark ? theme.colors.background : theme.colors.text,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    fontSize: theme.typography.body.fontSize,
+
+  // Footer
+  footer: {
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
   },
 });
 
